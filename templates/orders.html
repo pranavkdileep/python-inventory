@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Orders{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Orders</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addOrderModal">
+        <i data-lucide="plus"></i> Add Order
+    </button>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Customer</th>
+                <th>Items</th>
+                <th>Total</th>
+                <th>Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td>{{ order['id'] }}</td>
+                <td>{{ order['customer'] }}</td>
+                <td>
+                    {% for item in order['items'] %}
+                        {{ item['name'] }} ({{ item['quantity'] }})<br>
+                    {% endfor %}
+                </td>
+                <td>${{ "%.2f"|format(order['total']) }}</td>
+                <td>{{ order['date'] }}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary edit-order" data-id="{{ order['id'] }}">Edit</button>
+                    <button class="btn btn-sm btn-danger delete-order" data-id="{{ order['id'] }}">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Order Modal -->
+<div class="modal fade" id="addOrderModal" tabindex="-1" aria-labelledby="addOrderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addOrderModalLabel">Add New Order</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addOrderForm">
+                    <div class="mb-3">
+                        <label for="customer" class="form-label">Customer</label>
+                        <input type="text" class="form-control" id="customer" name="customer" required>
+                    </div>
+                    <div id="itemsContainer">
+                        <div class="mb-3 item-row">
+                            <label for="items" class="form-label">Item</label>
+                            <select class="form-select" name="items" required>
+                                <option value="">Select an item</option>
+                                {% for item in inventory %}
+                                <option value="{{ item.name }}">{{ item.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <label for="quantities" class="form-label mt-2">Quantity</label>
+                            <input type="number" class="form-control" name="quantities" required min="1">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary mb-3" id="addItemBtn">Add Another Item</button>
+                    <button type="submit" class="btn btn-primary">Add Order</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('addOrderForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    fetch('{{ url_for("add_order") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while adding the order');
+    });
+});
+
+document.getElementById('addItemBtn').addEventListener('click', function() {
+    const container = document.getElementById('itemsContainer');
+    const newRow = document.createElement('div');
+    newRow.className = 'mb-3 item-row';
+    newRow.innerHTML = `
+        <label for="items" class="form-label">Item</label>
+        <select class="form-select" name="items" required>
+            <option value="">Select an item</option>
+            {% for item in inventory %}
+            <option value="{{ item.name }}">{{ item.name }}</option>
+            {% endfor %}
+        </select>
+        <label for="quantities" class="form-label mt-2">Quantity</label>
+        <input type="number" class="form-control" name="quantities" required min="1">
+    `;
+    container.appendChild(newRow);
+});
+
+// Edit Order
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('edit-order')) {
+        const orderId = e.target.getAttribute('data-id');
+        // Implement edit order functionality
+        console.log('Edit order:', orderId);
+    }
+});
+
+// Delete Order
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('delete-order')) {
+        if (confirm('Are you sure you want to delete this order?')) {
+            const orderId = e.target.getAttribute('data-id');
+            fetch(`/delete_order/${orderId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                });
+        }
+    }
+});
+</script>
+{% endblock %}

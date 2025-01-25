@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Inventory</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addItemModal">
+        <i data-lucide="plus"></i> Add Item
+    </button>
+</div>
+
+<div id="alertContainer"></div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Expiry Date</th>
+                <th>Date Added</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in inventory %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.category }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>${{ "%.2f"|format(item.price) }}</td>
+                <td>{{ item.expiry_date if item.expiry_date else 'N/A' }}</td>
+                <td>{{ item.date_added }}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary edit-item" data-id="{{ item.id }}">Edit</button>
+                    <button class="btn btn-sm btn-danger delete-item" data-id="{{ item.id }}">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Item Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1" aria-labelledby="addItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addItemModalLabel">Add New Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addItemForm">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Item Name</label>
+                        <select class="form-select" id="name" name="name" required>
+                            <option value="">Select an item or add new</option>
+                            {% for item in inventory %}
+                            <option value="{{ item.name }}">{{ item.name }}</option>
+                            {% endfor %}
+                            <option value="new">Add New Item</option>
+                        </select>
+                        <input type="text" class="form-control mt-2" id="newItemName" name="newItemName" style="display: none;" placeholder="Enter new item name">
+                    </div>
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Category</label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="">Select a category or add new</option>
+                            {% for category in categories %}
+                            <option value="{{ category }}">{{ category }}</option>
+                            {% endfor %}
+                            <option value="new">Add New Category</option>
+                        </select>
+                        <input type="text" class="form-control mt-2" id="newCategory" name="newCategory" style="display: none;" placeholder="Enter new category">
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="price" class="form-label">Price</label>
+                        <input type="number" step="0.01" class="form-control" id="price" name="price" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="expiry_date" class="form-label">Expiry Date (optional)</label>
+                        <input type="date" class="form-control" id="expiry_date" name="expiry_date">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Item</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Item Modal -->
+<div class="modal fade" id="editItemModal" tabindex="-1" aria-labelledby="editItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editItemModalLabel">Edit Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editItemForm">
+                    <input type="hidden" id="editItemId" name="id">
+                    <div class="mb-3">
+                        <label for="editItemName" class="form-label">Item Name</label>
+                        <input type="text" class="form-control" id="editItemName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editItemCategory" class="form-label">Category</label>
+                        <select class="form-select" id="editItemCategory" name="category" required>
+                            {% for category in categories %}
+                            <option value="{{ category }}">{{ category }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editItemQuantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="editItemQuantity" name="quantity" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editItemPrice" class="form-label">Price</label>
+                        <input type="number" step="0.01" class="form-control" id="editItemPrice" name="price" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editItemExpiryDate" class="form-label">Expiry Date (optional)</label>
+                        <input type="date" class="form-control" id="editItemExpiryDate" name="expiry_date">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update Item</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('addItemForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    // Handle new item name
+    if (formData.get('name') === 'new') {
+        formData.set('name', formData.get('newItemName'));
+    }
+    formData.delete('newItemName');
+
+    // Handle new category
+    if (formData.get('category') === 'new') {
+        formData.set('category', formData.get('newCategory'));
+    }
+    formData.delete('newCategory');
+    
+    fetch('{{ url_for("add_item") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            showAlert('danger', 'Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'An unexpected error occurred. Please try again.');
+    });
+});
+
+document.getElementById('name').addEventListener('change', function() {
+    document.getElementById('newItemName').style.display = this.value === 'new' ? 'block' : 'none';
+});
+
+document.getElementById('category').addEventListener('change', function() {
+    document.getElementById('newCategory').style.display = this.value === 'new' ? 'block' : 'none';
+});
+
+function showAlert(type, message) {
+    const alertContainer = document.getElementById('alertContainer');
+    const alertElement = document.createElement('div');
+    alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+    alertElement.role = 'alert';
+    alertElement.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    alertContainer.appendChild(alertElement);
+    
+    // Remove the alert after 5 seconds
+    setTimeout(() => {
+        alertElement.remove();
+    }, 5000);
+}
+
+// Edit Item
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('edit-item')) {
+        const itemId = e.target.getAttribute('data-id');
+        fetch(`/get_item/${itemId}`)
+            .then(response => response.json())
+            .then(item => {
+                document.getElementById('editItemId').value = item.id;
+                document.getElementById('editItemName').value = item.name;
+                document.getElementById('editItemCategory').value = item.category;
+                document.getElementById('editItemQuantity').value = item.quantity;
+                document.getElementById('editItemPrice').value = item.price;
+                document.getElementById('editItemExpiryDate').value = item.expiry_date || '';
+                new bootstrap.Modal(document.getElementById('editItemModal')).show();
+            });
+    }
+});
+
+document.getElementById('editItemForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    fetch('/edit_item', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            showAlert('danger', 'Error: ' + data.message);
+        }
+    });
+});
+
+// Delete Item
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('delete-item')) {
+        if (confirm('Are you sure you want to delete this item?')) {
+            const itemId = e.target.getAttribute('data-id');
+            fetch(`/delete_item/${itemId}`, { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        location.reload();
+                    } else {
+                        showAlert('danger', 'Error: ' + data.message);
+                    }
+                });
+        }
+    }
+});
+</script>
+{% endblock %}
+

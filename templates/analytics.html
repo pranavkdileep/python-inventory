@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Analytics</h1>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Inventory by Category</h5>
+                <div class="mb-3">
+                    <select id="categoryChartToggle" class="form-select">
+                        <option value="price">Total Price</option>
+                        <option value="quantity">Item Count</option>
+                    </select>
+                </div>
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Sales Analysis</h5>
+                <div class="mb-3">
+                    <select id="salesChartToggle" class="form-select">
+                        <option value="product">Per Product</option>
+                        <option value="today">Today's Sales</option>
+                    </select>
+                </div>
+                <canvas id="salesChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Top Selling Products</h5>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Total Quantity Sold</th>
+                            <th>Total Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in top_selling_products %}
+                        <tr>
+                            <td>{{ product.name }}</td>
+                            <td>{{ product.quantity }}</td>
+                            <td>${{ "%.2f"|format(product.revenue) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Category Chart
+    var categoryData = {{ category_data|tojson }};
+    var ctx = document.getElementById('categoryChart').getContext('2d');
+    var categoryChart;
+
+    function updateCategoryChart(dataType) {
+        if (categoryChart) {
+            categoryChart.destroy();
+        }
+
+        if (categoryData.labels.length > 0) {
+            categoryChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: categoryData.labels,
+                    datasets: [{
+                        data: dataType === 'price' ? categoryData.price_data : categoryData.quantity_data,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.6)',
+                            'rgba(54, 162, 235, 0.6)',
+                            'rgba(255, 206, 86, 0.6)',
+                            'rgba(75, 192, 192, 0.6)',
+                            'rgba(153, 102, 255, 0.6)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Inventory by Category (' + (dataType === 'price' ? 'Total Price' : 'Item Count') + ')'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (dataType === 'price') {
+                                        label += '$' + context.parsed.toFixed(2);
+                                    } else {
+                                        label += context.parsed;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            document.getElementById('categoryChart').insertAdjacentHTML('afterend', '<p class="text-muted">No category data available</p>');
+        }
+    }
+
+    // Initialize category chart with price data
+    updateCategoryChart('price');
+
+    // Add event listener for toggle
+    document.getElementById('categoryChartToggle').addEventListener('change', function() {
+        updateCategoryChart(this.value);
+    });
+
+    // Sales Chart
+    var productSalesData = {{ product_sales_data|tojson }};
+    var todaySalesData = {{ today_sales_data|tojson }};
+    var salesCtx = document.getElementById('salesChart').getContext('2d');
+    var salesChart;
+
+    function updateSalesChart(dataType) {
+        if (salesChart) {
+            salesChart.destroy();
+        }
+
+        var data = dataType === 'product' ? productSalesData : todaySalesData;
+
+        if (data.labels.length > 0) {
+            salesChart = new Chart(salesCtx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: dataType === 'product' ? 'Total Sales' : 'Today\'s Sales',
+                        data: data.data,
+                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Sales ($)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: dataType === 'product' ? 'Product' : 'Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: true,
+                            text: dataType === 'product' ? 'Sales by Product' : 'Today\'s Sales'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += '$' + context.parsed.y.toFixed(2);
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            document.getElementById('salesChart').insertAdjacentHTML('afterend', '<p class="text-muted">No sales data available</p>');
+        }
+    }
+
+    // Initialize sales chart with product data
+    updateSalesChart('product');
+
+    // Add event listener for toggle
+    document.getElementById('salesChartToggle').addEventListener('change', function() {
+        updateSalesChart(this.value);
+    });
+</script>
+{% endblock %}
+
