@@ -34,7 +34,7 @@
                         {{ item['name'] }} ({{ item['quantity'] }})<br>
                     {% endfor %}
                 </td>
-                <td>${{ "%.2f"|format(order['total']) }}</td>
+                <td id="order-total-{{ order['id'] }}">₹{{ "{:,.2f}".format(order['total']) }}</td>
                 <td>{{ order['date'] }}</td>
                 <td>
                     <button class="btn btn-sm btn-primary edit-order" data-id="{{ order['id'] }}">Edit</button>
@@ -231,6 +231,19 @@ function showAlert(type, message) {
     setTimeout(() => {
         alertElement.remove();
     }, 5000);
+}
+
+// Update order totals with formatted currency
+document.querySelectorAll('[id^="order-total-"]').forEach(element => {
+    const total = parseFloat(element.textContent.replace('₹', '').replace(',', ''));
+    element.textContent = formatIndianCurrency(total);
+});
+
+function formatIndianCurrency(num) {
+    return '₹' + num.toLocaleString('hi-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
 }
 </script>
 {% endblock %}

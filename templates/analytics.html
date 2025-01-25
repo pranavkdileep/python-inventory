@@ -56,7 +56,7 @@
                         <tr>
                             <td>{{ product.name }}</td>
                             <td>{{ product.quantity }}</td>
-                            <td>${{ "%.2f"|format(product.revenue) }}</td>
+                            <td id="product-revenue-{{ loop.index }}">₹{{ "{:,.2f}".format(product.revenue) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -89,68 +89,37 @@
                     datasets: [{
                         data: dataType === 'price' ? categoryData.price_data : categoryData.quantity_data,
                         backgroundColor: [
-                            'rgba(255, 99, 132, 0.6)',
-                            'rgba(54, 162, 235, 0.6)',
-                            'rgba(255, 206, 86, 0.6)',
-                            'rgba(75, 192, 192, 0.6)',
-                            'rgba(153, 102, 255, 0.6)'
+                            'rgba(255, 99, 132, 0.2)',
+                            'rgba(54, 162, 235, 0.2)',
+                            'rgba(255, 206, 86, 0.2)',
+                            'rgba(75, 192, 192, 0.2)',
+                            'rgba(153, 102, 255, 0.2)',
+                            'rgba(255, 159, 64, 0.2)'
                         ],
                         borderColor: [
                             'rgba(255, 99, 132, 1)',
                             'rgba(54, 162, 235, 1)',
                             'rgba(255, 206, 86, 1)',
                             'rgba(75, 192, 192, 1)',
-                            'rgba(153, 102, 255, 1)'
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)'
                         ],
                         borderWidth: 1
                     }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        title: {
-                            display: true,
-                            text: 'Inventory by Category (' + (dataType === 'price' ? 'Total Price' : 'Item Count') + ')'
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
-                                    if (dataType === 'price') {
-                                        label += '$' + context.parsed.toFixed(2);
-                                    } else {
-                                        label += context.parsed;
-                                    }
-                                    return label;
-                                }
-                            }
-                        }
-                    }
                 }
             });
-        } else {
-            document.getElementById('categoryChart').insertAdjacentHTML('afterend', '<p class="text-muted">No category data available</p>');
         }
     }
 
-    // Initialize category chart with price data
-    updateCategoryChart('price');
-
-    // Add event listener for toggle
     document.getElementById('categoryChartToggle').addEventListener('change', function() {
         updateCategoryChart(this.value);
     });
 
+    updateCategoryChart('price');
+
     // Sales Chart
-    var productSalesData = {{ product_sales_data|tojson }};
-    var todaySalesData = {{ today_sales_data|tojson }};
-    var salesCtx = document.getElementById('salesChart').getContext('2d');
+    var salesData = {{ sales_data|tojson }};
+    var ctx2 = document.getElementById('salesChart').getContext('2d');
     var salesChart;
 
     function updateSalesChart(dataType) {
@@ -158,73 +127,43 @@
             salesChart.destroy();
         }
 
-        var data = dataType === 'product' ? productSalesData : todaySalesData;
+        var chartData = {
+            labels: salesData[dataType].labels,
+            datasets: [{
+                label: dataType === 'product' ? 'Sales per Product' : 'Today\'s Sales',
+                data: salesData[dataType].data,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        };
 
-        if (data.labels.length > 0) {
-            salesChart = new Chart(salesCtx, {
+        if (salesData[dataType].labels.length > 0) {
+            salesChart = new Chart(ctx2, {
                 type: 'bar',
-                data: {
-                    labels: data.labels,
-                    datasets: [{
-                        label: dataType === 'product' ? 'Total Sales' : 'Today\'s Sales',
-                        data: data.data,
-                        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Sales ($)'
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: dataType === 'product' ? 'Product' : 'Time'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        title: {
-                            display: true,
-                            text: dataType === 'product' ? 'Sales by Product' : 'Today\'s Sales'
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
-                                    label += '$' + context.parsed.y.toFixed(2);
-                                    return label;
-                                }
-                            }
-                        }
-                    }
-                }
+                data: chartData
             });
-        } else {
-            document.getElementById('salesChart').insertAdjacentHTML('afterend', '<p class="text-muted">No sales data available</p>');
         }
     }
 
-    // Initialize sales chart with product data
-    updateSalesChart('product');
-
-    // Add event listener for toggle
     document.getElementById('salesChartToggle').addEventListener('change', function() {
         updateSalesChart(this.value);
     });
+
+    updateSalesChart('product');
+
+    // Update product revenues with formatted currency
+    document.querySelectorAll('[id^="product-revenue-"]').forEach(element => {
+        const revenue = parseFloat(element.textContent.replace('₹', '').replace(',', ''));
+        element.textContent = formatIndianCurrency(revenue);
+    });
+
+    function formatIndianCurrency(num) {
+        return '₹' + num.toLocaleString('en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    }
 </script>
 {% endblock %}
 

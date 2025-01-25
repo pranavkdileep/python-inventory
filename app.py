@@ -1,10 +1,15 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, jsonify, Response, send_file
 from datetime import datetime, timedelta
 import json
 import time
 import random
 import logging
 from collections import deque
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
 
@@ -15,8 +20,14 @@ logging.basicConfig(level=logging.DEBUG)
 inventory = []
 orders = []
 history = []
-categories = []
+categories = ["Electronics", "Clothing", "Books", "Home & Garden", "Toys"]
 company_name = "Inventory Dashboard"
+
+def format_indian_currency(amount):
+    s = f"{amount:.2f}"
+    integer_part, decimal_part = s.split(".")
+    integer_part = "{:,}".format(int(integer_part)).replace(",", ",")
+    return f"₹{integer_part}.{decimal_part}"
 
 @app.route('/')
 def dashboard():
@@ -191,10 +202,15 @@ def analytics_page():
     product_sales_data = get_product_sales_data()
     today_sales_data = get_today_sales_data()
     top_selling_products = get_top_selling_products()
+    
+    sales_data = {
+        'product': product_sales_data,
+        'today': today_sales_data
+    }
+    
     return render_template('analytics.html', 
                            category_data=category_data,
-                           product_sales_data=product_sales_data,
-                           today_sales_data=today_sales_data,
+                           sales_data=sales_data,
                            top_selling_products=top_selling_products)
 
 def get_sales_data():
@@ -316,16 +332,115 @@ def stream():
 
 @app.route('/download_report')
 def download_report():
-    report = {
-        'inventory': inventory,
-        'orders': orders,
-        'history': history
-    }
-    return Response(
-        json.dumps(report, indent=2),
-        mimetype='application/json',
-        headers={'Content-Disposition': 'attachment;filename=report.json'}
-    )
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # Title
+    elements.append(Paragraph("Inventory Management Report", styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    # Inventory Table
+    inventory_data = [['ID', 'Name', 'Category', 'Quantity', 'Price', 'Expiry Date']]
+    for item in inventory:
+        inventory_data.append([
+            str(item['id']),
+            item['name'],
+            item['category'],
+            str(item['quantity']),
+            format_indian_currency(item['price']),
+            str(item['expiry_date']) if item['expiry_date'] else 'N/A'
+        ])
+
+    inventory_table = Table(inventory_data)
+    inventory_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+
+    elements.append(Paragraph("Inventory", styles['Heading2']))
+    elements.append(inventory_table)
+    elements.append(Spacer(1, 12))
+
+    # Orders Table
+    orders_data = [['ID', 'Customer', 'Total', 'Date']]
+    for order in orders:
+        orders_data.append([
+            str(order['id']),
+            order['customer'],
+            format_indian_currency(order['total']),
+            order['date']
+        ])
+
+    orders_table = Table(orders_data)
+    orders_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+
+    elements.append(Paragraph("Orders", styles['Heading2']))
+    elements.append(orders_table)
+    elements.append(Spacer(1, 12))
+
+    # History Table
+    history_data = [['Action', 'Details', 'Date']]
+    for entry in history:
+        details = entry.get('item') or entry.get('customer') or f"Order ID: {entry.get('order_id')}"
+        history_data.append([
+            entry['action'],
+            details,
+            entry['date']
+        ])
+
+    history_table = Table(history_data)
+    history_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+
+    elements.append(Paragraph("History", styles['Heading2']))
+    elements.append(history_table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name='inventory_report.pdf', mimetype='application/pdf')
 
 @app.route('/get_product/<int:id>')
 def get_product(id):

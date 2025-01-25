@@ -33,7 +33,7 @@
                 <td>{{ item.name }}</td>
                 <td>{{ item.category }}</td>
                 <td>{{ item.quantity }}</td>
-                <td>${{ "%.2f"|format(item.price) }}</td>
+                <td id="item-price-{{ item.id }}">₹{{ "{:,.2f}".format(item.price) }}</td>
                 <td>{{ item.expiry_date if item.expiry_date else 'N/A' }}</td>
                 <td>{{ item.date_added }}</td>
                 <td>
@@ -258,6 +258,17 @@ document.addEventListener('click', function(e) {
         }
     }
 });
+
+// Update item prices with formatted currency
+document.querySelectorAll('[id^="item-price-"]').forEach(element => {
+    const price = parseFloat(element.textContent.replace('₹', '').replace(',', ''));
+    element.textContent = formatIndianCurrency(price);
+});
+
+function formatIndianCurrency(price) {
+    //This function is a placeholder.  You'll need to implement actual currency formatting here.
+    return '₹' + price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 </script>
 {% endblock %}
 
