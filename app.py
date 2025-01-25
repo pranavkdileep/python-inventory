@@ -359,8 +359,81 @@ def delete_product(id):
 @app.route('/delete_order/<int:id>', methods=['POST'])
 def delete_order(id):
     global orders
-    orders = [order for order in orders if order['id'] != id]
-    return jsonify({"success": True, "message": "Order deleted successfully"})
+    order = next((order for order in orders if order['id'] == id), None)
+    if order:
+        orders = [o for o in orders if o['id'] != id]
+        history.append({
+            'action': 'Order Deleted',
+            'order_id': order['id'],
+            'customer': order['customer'],
+            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        return jsonify({"success": True, "message": "Order deleted successfully"})
+    return jsonify({"success": False, "message": "Order not found"}), 404
+
+@app.route('/get_order/<int:id>')
+def get_order(id):
+    order = next((order for order in orders if order['id'] == id), None)
+    if order:
+        return jsonify(order)
+    return jsonify({"error": "Order not found"}), 404
+
+@app.route('/edit_order', methods=['POST'])
+def edit_order():
+    try:
+        order_id = int(request.form['id'])
+        order = next((order for order in orders if order['id'] == order_id), None)
+        if not order:
+            return jsonify({"success": False, "message": "Order not found"}), 404
+        
+        customer = request.form['customer']
+        items = request.form.getlist('items')
+        quantities = request.form.getlist('quantities')
+        
+        if not customer or not items:
+            raise ValueError("Invalid input data")
+        
+        # Revert the inventory changes from the original order
+        for item in order['items']:
+            inventory_item = next((i for i in inventory if i['name'].lower() == item['name'].lower()), None)
+            if inventory_item:
+                inventory_item['quantity'] += item['quantity']
+        
+        total = 0
+        order_items = []
+        for item_name, quantity in zip(items, quantities):
+            quantity = int(quantity)
+            item_data = next((i for i in inventory if i['name'].lower() == item_name.lower()), None)
+            if not item_data:
+                raise ValueError(f"Item '{item_name}' not found in inventory")
+            if item_data['quantity'] < quantity:
+                raise ValueError(f"Insufficient stock for '{item_name}'. Available: {item_data['quantity']}, Requested: {quantity}")
+            
+            item_total = item_data['price'] * quantity
+            total += item_total
+            order_items.append({'name': item_name, 'quantity': quantity, 'price': item_data['price']})
+            
+            # Update inventory
+            item_data['quantity'] -= quantity
+        
+        # Update the order
+        order['customer'] = customer
+        order['items'] = order_items
+        order['total'] = total
+        order['date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        history.append({
+            'action': 'Order Updated',
+            'order_id': order['id'],
+            'customer': order['customer'],
+            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        
+        return jsonify({"success": True, "message": "Order updated successfully"})
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An error occurred while updating the order: {str(e)}"}), 500
 
 @app.route('/get_item/<int:id>')
 def get_item(id):

@@ -21,10 +21,12 @@
             <tr>
                 <td>{{ entry.action }}</td>
                 <td>
-                    {% if entry.action == 'Item Added' %}
+                    {% if entry.item %}
                         Item: {{ entry.item }}
-                    {% elif entry.action == 'Order Placed' %}
+                    {% elif entry.customer %}
                         Customer: {{ entry.customer }}
+                    {% elif entry.order_id %}
+                        Order ID: {{ entry.order_id }}
                     {% endif %}
                 </td>
                 <td>{{ entry.date }}</td>
