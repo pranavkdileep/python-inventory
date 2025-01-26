@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.DEBUG)
 inventory = []
 orders = []
 history = []
-categories = ["Electronics", "Clothing", "Books", "Home & Garden", "Toys"]
+categories = []
 company_name = "Inventory Dashboard"
 
 def format_indian_currency(amount):
@@ -42,7 +42,7 @@ def dashboard():
 
 @app.route('/inventory')
 def inventory_page():
-    return render_template('inventory.html', inventory=inventory, categories=categories)
+    return render_template('inventory.html', inventory=inventory, categories=categories, company_name=company_name)
 
 @app.route('/add_item', methods=['POST'])
 def add_item():
@@ -137,7 +137,7 @@ def add_item():
 
 @app.route('/orders')
 def orders_page():
-    return render_template('orders.html', orders=orders, inventory=inventory)
+    return render_template('orders.html', orders=orders, inventory=inventory, company_name=company_name)
 
 @app.route('/add_order', methods=['POST'])
 def add_order():
@@ -184,7 +184,7 @@ def add_order():
 
 @app.route('/history')
 def history_page():
-    return render_template('history.html', history=history)
+    return render_template('history.html', history=history, company_name=company_name)
 
 @app.route('/settings')
 def settings_page():
@@ -211,7 +211,9 @@ def analytics_page():
     return render_template('analytics.html', 
                            category_data=category_data,
                            sales_data=sales_data,
-                           top_selling_products=top_selling_products)
+                           top_selling_products=top_selling_products,
+                           company_name=company_name)
+
 
 def get_sales_data():
     sales_by_month = {}
