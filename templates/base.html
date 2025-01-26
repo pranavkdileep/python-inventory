@@ -98,9 +98,17 @@
         <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#" id="company-name">
             {{ company_name if company_name else "Inventory Dashboard" }}
         </a>
-        <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+        <ul class="navbar-nav px-3">
+            {% if 'username' in session %}
+                <li class="nav-item text-nowrap">
+                    <a class="nav-link" href="{{ url_for('logout') }}">Logout ({{ session['username'] }})</a>
+                </li>
+            {% else %}
+                <li class="nav-item text-nowrap">
+                    <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                </li>
+            {% endif %}
+        </ul>
     </nav>
 
     <div class="container-fluid">
@@ -149,6 +157,18 @@
             </nav>
 
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 content">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show mt-3" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
                 {% block content %}{% endblock %}
             </main>
         </div>
