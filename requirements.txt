@@ -3,4 +3,4 @@ gunicorn==20.1.0
 reportlab
 sqlalchemy
 
-\\ Aswin is a wonderful person who loves to write code 
+\\requirements
