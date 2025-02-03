@@ -20,21 +20,36 @@ app.secret_key = 'your_secret_key'  # Replace with a strong secret key
 logging.basicConfig(level=logging.DEBUG)
 
 # Global variables
-company_name = "Inventory System"
 users = {}  # This will store all user data
 
 def init_user_data(email, username, password):
     """Initialize a new user with empty data structures"""
     users[email] = {
         'username': username,
-        'password': password,
+        'password': password,  # Make sure password is stored
         'inventory': [],
         'inventory_name': 'Inventory System',
+        'company_name': 'Inventory Dashboard',
         'orders': [],
         'history': [],
         'categories': [],
         'stocks': []
     }
+    return users[email]
+
+def init_user_if_needed(email):
+    if email not in users:
+        users[email] = {
+            'username': session['username'],
+            'inventory': [],
+            'inventory_name': 'Inventory System',
+            'company_name': 'Inventory Dashboard',
+            'orders': [],
+            'history': [],
+            'categories': [],
+            'stocks': []
+        }
+    return users[email]
 
 # Login required decorator
 def login_required(f):
@@ -187,18 +202,16 @@ def login():
         email = request.form['email']
         password = request.form['password']
         
-        # Validate user credentials
         user = users.get(email)
-        if user and user['password'] == password:
+        
+        if user and user.get('password') == password:
             session['user_email'] = email
             session['username'] = user['username']
-            session['inventory_name'] = user['inventory_name']  # Store inventory name in session
-            flash('Login successful!', 'success')
             return redirect(url_for('dashboard'))
         else:
-            flash('Invalid credentials. Please try again.', 'danger')
+            flash('Invalid email or password', 'error')
     
-    return render_template('login.html', company_name=company_name)
+    return render_template('login.html', company_name="Inventory Dashboard")
 
 # Registration route
 @app.route('/register', methods=['GET', 'POST'])
@@ -214,6 +227,7 @@ def register():
             'username': username,
             'inventory': [],
             'inventory_name': 'Inventory System',
+            'company_name': 'Inventory Dashboard',  # Add default company name
             'orders': [],
             'history': [],
             'categories': [],
@@ -237,30 +251,14 @@ def logout():
 @login_required
 def dashboard():
     user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
     username = session['username']
-    
-    # Initialize user data if it doesn't exist
-    if user_email not in users:
-        users[user_email] = {
-            'username': username,
-            'password': '',  # You might want to handle this differently
-            'inventory': [],
-            'inventory_name': 'Inventory System',
-            'orders': [],
-            'history': [],
-            'categories': [],
-            'stocks': []
-        }
-    
-    # Get user-specific data
-    user_data = users[user_email]
     
     if request.method == 'POST':
         # Update inventory name
         new_inventory_name = request.form.get('inventory_name')
         if new_inventory_name:
             user_data['inventory_name'] = new_inventory_name
-            session['inventory_name'] = new_inventory_name
             flash('Inventory name updated successfully!', 'success')
     
     # Calculate dashboard metrics
@@ -274,12 +272,10 @@ def dashboard():
     product_sales_data = get_product_sales_data(user_email)
     today_sales_data = get_today_sales_data(user_email)
     
-    inventory_name = session.get('inventory_name', 'Inventory System')
-    
     return render_template('dashboard.html', 
                          inventory_count=inventory_count,
                          total_sales=total_sales,
-                         company_name=company_name,
+                         company_name=user_data['company_name'],  # Use user-specific company name
                          low_stock_products=low_stock_products,
                          orders=user_data['orders'],
                          sales_mini_data=sales_mini_data,
@@ -287,31 +283,18 @@ def dashboard():
                          product_sales_data=product_sales_data,
                          today_sales_data=today_sales_data,
                          username=username,
-                         inventory_name=inventory_name)
+                         inventory_name=user_data['inventory_name'])
 
 # Orders route (protected)
 @app.route('/orders')
 @login_required
 def orders_page():
     user_email = session['user_email']
-    
-    # Initialize user data if it doesn't exist
-    if user_email not in users:
-        users[user_email] = {
-            'username': session['username'],
-            'password': '',
-            'inventory': [],
-            'orders': [],
-            'history': [],
-            'categories': [],
-            'stocks': []
-        }
-    
-    user_data = users[user_email]
+    user_data = init_user_if_needed(user_email)
     return render_template('orders.html', 
                          orders=user_data['orders'], 
                          inventory=user_data['inventory'],
-                         company_name=company_name)
+                         company_name=user_data['company_name'])
 
 # Add order route (protected)
 @app.route('/add_order', methods=['POST'])
@@ -415,24 +398,11 @@ def require_login():
 @login_required
 def inventory_page():
     user_email = session['user_email']
-    
-    # Get user-specific data
-    if user_email not in users:
-        users[user_email] = {
-            'username': session['username'],
-            'password': '',
-            'inventory': [],
-            'orders': [],
-            'history': [],
-            'categories': [],
-            'stocks': []
-        }
-    
-    user_data = users[user_email]
+    user_data = init_user_if_needed(user_email)
     return render_template('inventory.html', 
                          inventory=user_data['inventory'], 
-                         categories=user_data['categories'], 
-                         company_name=company_name)
+                         categories=user_data['categories'],
+                         company_name=user_data['company_name'])
 
 # Add item route
 @app.route('/add_item', methods=['POST'])
@@ -440,20 +410,7 @@ def inventory_page():
 def add_item():
     try:
         user_email = session['user_email']
-        
-        # Initialize user data if it doesn't exist
-        if user_email not in users:
-            users[user_email] = {
-                'username': session['username'],
-                'password': '',
-                'inventory': [],
-                'orders': [],
-                'history': [],
-                'categories': [],
-                'stocks': []
-            }
-        
-        user_data = users[user_email]
+        user_data = init_user_if_needed(user_email)
         
         # Get form data
         name = request.form.get('name')
@@ -464,24 +421,42 @@ def add_item():
         if category == 'new':
             category = request.form.get('newCategory')
         
-        # Create new item
-        item = {
-            'id': len(user_data['inventory']) + 1,  # Simple ID generation
-            'name': name,
-            'category': category,
-            'quantity': int(request.form.get('quantity', 0)),
-            'price': float(request.form.get('price', 0)),
-            'expiry_date': request.form.get('expiry_date'),
-            'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        quantity = int(request.form.get('quantity', 0))
+        price = float(request.form.get('price', 0))
         
-        # Add to user's inventory
-        user_data['inventory'].append(item)
+        # Check if item already exists
+        existing_item = next(
+            (item for item in user_data['inventory'] if 
+             item['name'].lower() == name.lower() and 
+             item['category'].lower() == category.lower() and
+             item['price'] == price),
+            None
+        )
+        
+        if existing_item:
+            # Update existing item quantity
+            existing_item['quantity'] += quantity
+            message = "Item quantity updated successfully"
+        else:
+            # Create new item
+            item = {
+                'id': len(user_data['inventory']) + 1,
+                'name': name,
+                'category': category,
+                'quantity': quantity,
+                'price': price,
+                'expiry_date': request.form.get('expiry_date'),
+                'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            # Add to user's inventory
+            user_data['inventory'].append(item)
+            message = "Item added successfully"
         
         # Add to user's history
         user_data['history'].append({
-            'action': 'Item Added',
-            'item': item['name'],
+            'action': 'Item Added/Updated',
+            'item': name,
             'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         
@@ -489,7 +464,7 @@ def add_item():
         if category not in user_data['categories']:
             user_data['categories'].append(category)
         
-        return jsonify({"success": True, "message": "Item added successfully"})
+        return jsonify({"success": True, "message": message})
     
     except Exception as e:
         print(f"Error adding item: {e}")
@@ -499,67 +474,111 @@ def add_item():
 @login_required
 def history_page():
     user_email = session['user_email']
-    
-    # Initialize user data if it doesn't exist
-    if user_email not in users:
-        users[user_email] = {
-            'username': session['username'],
-            'password': '',
-            'inventory': [],
-            'orders': [],
-            'history': [],
-            'categories': [],
-            'stocks': []
-        }
-    
-    user_data = users[user_email]
+    user_data = init_user_if_needed(user_email)
     return render_template('history.html', 
                          history=user_data['history'], 
-                         company_name=company_name)
+                         company_name=user_data['company_name'])
 
 @app.route('/settings')
+@login_required
 def settings_page():
-    return render_template('settings.html', company_name=company_name)
+    user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
+    return render_template('settings.html', 
+                         company_name=user_data['company_name'])
 
 @app.route('/update_company_name', methods=['POST'])
+@login_required
 def update_company_name():
-    global company_name
-    company_name = request.form['company_name']
-    return jsonify({"success": True, "message": "Company name updated successfully", "new_name": company_name})
+    user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
+    user_data['company_name'] = request.form['company_name']
+    return jsonify({
+        "success": True, 
+        "message": "Company name updated successfully", 
+        "new_name": user_data['company_name']
+    })
 
 @app.route('/analytics')
 @login_required
 def analytics_page():
     user_email = session['user_email']
-    
-    # Initialize user data if it doesn't exist
-    if user_email not in users:
-        users[user_email] = {
-            'username': session['username'],
-            'password': '',
-            'inventory': [],
-            'orders': [],
-            'history': [],
-            'categories': [],
-            'stocks': []
-        }
-    
-    # Get analytics data
-    user_data = users[user_email]
+    user_data = init_user_if_needed(user_email)
     
     # Category data
-    category_data = get_category_data(user_email)
-    print("Category Data:", category_data)  # Debug print
+    category_data = {
+        'labels': [],
+        'price_data': [],
+        'quantity_data': []
+    }
+    
+    # Item data (new)
+    item_data = {
+        'labels': [],
+        'price_data': [],
+        'quantity_data': []
+    }
+    
+    # Group by category
+    category_totals = {}
+    for item in user_data['inventory']:
+        category = item['category']
+        if category not in category_totals:
+            category_totals[category] = {
+                'total_price': 0,
+                'total_quantity': 0
+            }
+        category_totals[category]['total_price'] += item['price'] * item['quantity']
+        category_totals[category]['total_quantity'] += item['quantity']
+    
+    # Prepare category data
+    for category, totals in category_totals.items():
+        category_data['labels'].append(category)
+        category_data['price_data'].append(totals['total_price'])
+        category_data['quantity_data'].append(totals['total_quantity'])
+    
+    # Prepare item data
+    for item in user_data['inventory']:
+        item_data['labels'].append(item['name'])
+        item_data['price_data'].append(item['price'] * item['quantity'])
+        item_data['quantity_data'].append(item['quantity'])
     
     # Sales data
-    sales_data = get_sales_data(user_email)
-    print("Sales Data:", sales_data)  # Debug print
+    sales_data = {
+        'product': {
+            'labels': [],
+            'data': []
+        },
+        'today': {
+            'labels': ['Total Sales Today'],
+            'data': [0]  # Initialize with 0
+        }
+    }
     
-    # Inventory data
-    inventory_data = get_inventory_data(user_email)
-    print("Inventory Data:", inventory_data)  # Debug print
+    # Product sales data
+    product_sales = {}
+    for order in user_data['orders']:
+        for item in order['items']:
+            if item['name'] not in product_sales:
+                product_sales[item['name']] = 0
+            product_sales[item['name']] += item['quantity'] * item['price']
     
-    # Get top selling products
+    # Get top 5 products by sales
+    top_products = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)[:5]
+    sales_data['product']['labels'] = [item[0] for item in top_products]
+    sales_data['product']['data'] = [item[1] for item in top_products]
+    
+    # Today's total sales (modified)
+    today = datetime.now().date()
+    today_total = 0
+    for order in user_data['orders']:
+        order_date = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S").date()
+        if order_date == today:
+            today_total += float(order.get('total', 0))
+    
+    sales_data['today']['data'] = [today_total]
+    
+    # Get top selling products for the table
     top_products = []
     product_sales = {}
     for order in user_data['orders']:
@@ -581,14 +600,12 @@ def analytics_page():
             'revenue': data['revenue']
         })
     
-    print("Top Products:", top_products)  # Debug print
-    
     return render_template('analytics.html',
                          category_data=category_data,
+                         item_data=item_data,  # Add item data
                          sales_data=sales_data,
-                         inventory_data=inventory_data,
                          top_products=top_products,
-                         company_name=company_name)
+                         company_name=user_data['company_name'])
 
 def get_sales_mini_data(user_email):
     """Get recent sales data for mini chart"""
@@ -654,7 +671,10 @@ def get_today_sales_data(user_email):
     }
 
 @app.route('/stream')
+@login_required
 def stream():
+    user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
     def event_stream():
         while True:
             try:
@@ -685,116 +705,83 @@ def stream():
     return Response(event_stream(), mimetype="text/event-stream")
 
 @app.route('/download_report')
+@login_required
 def download_report():
+    user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
+    inventory = user_data['inventory']
+    
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
+    
     styles = getSampleStyleSheet()
-
-    # Title
-    elements.append(Paragraph("Inventory Management Report", styles['Title']))
-    elements.append(Spacer(1, 12))
-
-    # Inventory Table
-    inventory_data = [['ID', 'Name', 'Category', 'Quantity', 'Price', 'Expiry Date']]
+    elements.append(Paragraph(f"Inventory Report - {user_data['company_name']}", styles['Title']))
+    elements.append(Spacer(1, 20))
+    
+    # Create table data with proper value calculations
+    data = [['Name', 'Category', 'Quantity', 'Price (INR)', 'Total Value (INR)']]
+    total_inventory_value = 0
+    
     for item in inventory:
-        inventory_data.append([
-            str(item['id']),
-            item['name'],
-            item['category'],
-            str(item['quantity']),
-            format_indian_currency(item['price']),
-            str(item['expiry_date']) if item['expiry_date'] else 'N/A'
-        ])
-
-    inventory_table = Table(inventory_data)
-    inventory_table.setStyle(TableStyle([
+        try:
+            quantity = float(item['quantity'])
+            price = float(item['price'])
+            total_value = quantity * price
+            total_inventory_value += total_value
+            
+            data.append([
+                str(item['name']),
+                str(item['category']),
+                f"{quantity:,.0f}",  # No decimals for quantity
+                f"{price:,.2f}",     # 2 decimals for price
+                f"{total_value:,.2f}" # 2 decimals for total value
+            ])
+        except (ValueError, KeyError) as e:
+            # Skip items with invalid data
+            print(f"Error processing item {item.get('name', 'unknown')}: {str(e)}")
+            continue
+    
+    # Add total row with proper formatting
+    data.append(['', '', '', 'Total:', f"{total_inventory_value:,.2f}"])
+    
+    # Create and style the table
+    table = Table(data)
+    table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (3, 1), (4, -1), 'RIGHT'),  # Right align price columns
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 14),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 12),
-        ('TOPPADDING', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 12),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
-
-    elements.append(Paragraph("Inventory", styles['Heading2']))
-    elements.append(inventory_table)
-    elements.append(Spacer(1, 12))
-
-    # Orders Table
-    orders_data = [['ID', 'Customer', 'Total', 'Date']]
-    for order in orders:
-        orders_data.append([
-            str(order['id']),
-            order['customer'],
-            format_indian_currency(order['total']),
-            order['date']
-        ])
-
-    orders_table = Table(orders_data)
-    orders_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 12),
-        ('TOPPADDING', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-
-    elements.append(Paragraph("Orders", styles['Heading2']))
-    elements.append(orders_table)
-    elements.append(Spacer(1, 12))
-
-    # History Table
-    history_data = [['Action', 'Details', 'Date']]
-    for entry in history:
-        details = entry.get('item') or entry.get('customer') or f"Order ID: {entry.get('order_id')}"
-        history_data.append([
-            entry['action'],
-            details,
-            entry['date']
-        ])
-
-    history_table = Table(history_data)
-    history_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 12),
-        ('TOPPADDING', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-
-    elements.append(Paragraph("History", styles['Heading2']))
-    elements.append(history_table)
-
+    
+    elements.append(table)
+    
+    # Add summary section
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("Summary:", styles['Heading2']))
+    elements.append(Paragraph(f"Total Items: {len(inventory)}", styles['Normal']))
+    elements.append(Paragraph(f"Total Inventory Value: INR: {total_inventory_value:,.2f}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 
+                            styles['Normal']))
+    
     doc.build(elements)
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name='inventory_report.pdf', mimetype='application/pdf')
+    
+    return send_file(
+        buffer,
+        download_name=f'inventory_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf',
+        as_attachment=True,
+        mimetype='application/pdf'
+    )
 
 @app.route('/get_product/<int:id>')
 def get_product(id):
@@ -963,7 +950,7 @@ def get_item(id):
 def edit_item():
     try:
         user_email = session['user_email']
-        user_data = users[user_email]
+        user_data = init_user_if_needed(user_email)
         
         item_id = int(request.form['id'])
         item = next((item for item in user_data['inventory'] if item['id'] == item_id), None)
@@ -991,7 +978,7 @@ def edit_item():
 @login_required
 def delete_item(id):
     user_email = session['user_email']
-    user_data = users[user_email]
+    user_data = init_user_if_needed(user_email)
     
     item = next((item for item in user_data['inventory'] if item['id'] == id), None)
     if item:
@@ -1011,6 +998,7 @@ def delete_item(id):
 @login_required
 def stocks():
     user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
     username = session['username']
     
     if request.method == 'POST':
@@ -1021,7 +1009,6 @@ def stocks():
         users[user_email]['stocks'].append(stock)
     
     # Get user-specific data
-    user_data = users[user_email]
     inventory_count = len(user_data['inventory'])
     total_sales = sum(order['total'] for order in user_data['orders'])
     low_stock_products = get_low_stock_products(user_email)
@@ -1029,7 +1016,7 @@ def stocks():
     return render_template('dashboard.html', 
                          inventory_count=inventory_count,
                          total_sales=total_sales,
-                         company_name=company_name,
+                         company_name=user_data['company_name'],
                          low_stock_products=low_stock_products,
                          orders=user_data['orders'],
                          username=username)
