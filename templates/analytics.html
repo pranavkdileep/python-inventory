@@ -9,58 +9,85 @@
 
 <div class="row mb-4">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Inventory by Category</h5>
-                <div class="mb-3">
-                    <select id="categoryChartToggle" class="form-select">
-                        <option value="price">Total Price</option>
-                        <option value="quantity">Item Count</option>
-                    </select>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Inventory Analysis</h5>
+                    <div class="d-flex gap-2">
+                        <select id="viewTypeToggle" class="form-select form-select-sm">
+                            <option value="category">By Category</option>
+                            <option value="item">By Item</option>
+                        </select>
+                        <select id="dataTypeToggle" class="form-select form-select-sm">
+                            <option value="price">Total Price</option>
+                            <option value="quantity">Item Count</option>
+                        </select>
+                    </div>
                 </div>
-                <canvas id="categoryChart"></canvas>
+                <div style="height: 300px;">
+                    <canvas id="inventoryChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Sales Analysis</h5>
+                <h5 class="card-title mb-3">Sales Analysis</h5>
                 <div class="mb-3">
-                    <select id="salesChartToggle" class="form-select">
-                        <option value="product">Per Product</option>
+                    <select id="salesChartToggle" class="form-select form-select-sm">
+                        <option value="product">Product Sales</option>
                         <option value="today">Today's Sales</option>
                     </select>
                 </div>
-                <canvas id="salesChart"></canvas>
+                <div style="height: 300px;">
+                    <canvas id="salesChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row mb-4">
+<div class="row">
     <div class="col-md-12">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Top Selling Products</h5>
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Product Name</th>
-                            <th>Total Quantity Sold</th>
-                            <th>Total Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for product in top_products %}
-                        <tr>
-                            <td>{{ product.name }}</td>
-                            <td>{{ product.quantity }}</td>
-                            <td id="product-revenue-{{ loop.index }}">₹{{ "{:,.2f}".format(product.revenue) }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <h5 class="card-title mb-4">Top Selling Products</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Total Quantity Sold</th>
+                                <th>Total Revenue</th>
+                                <th>Performance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for product in top_products %}
+                            <tr>
+                                <td>{{ product.name }}</td>
+                                <td>{{ product.quantity }}</td>
+                                <td>₹{{ "{:,.2f}".format(product.revenue) }}</td>
+                                <td style="width: 200px;">
+                                    <div class="progress" style="height: 6px;">
+                                        {% set max_revenue = top_products[0].revenue if top_products else 0 %}
+                                        {% set percentage = (product.revenue / max_revenue * 100) if max_revenue > 0 else 0 %}
+                                        <div class="progress-bar bg-primary" style="width: {{ percentage }}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% if not top_products %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">
+                                    No sales data available
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -69,101 +96,227 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Category Chart
-    var categoryData = {{ category_data|tojson }};
-    var ctx = document.getElementById('categoryChart').getContext('2d');
-    var categoryChart;
-
-    function updateCategoryChart(dataType) {
-        if (categoryChart) {
-            categoryChart.destroy();
-        }
-
-        if (categoryData.labels.length > 0) {
-            categoryChart = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: categoryData.labels,
-                    datasets: [{
-                        data: dataType === 'price' ? categoryData.price_data : categoryData.quantity_data,
-                        backgroundColor: [
-                            'rgba(255, 99, 132, 0.2)',
-                            'rgba(54, 162, 235, 0.2)',
-                            'rgba(255, 206, 86, 0.2)',
-                            'rgba(75, 192, 192, 0.2)',
-                            'rgba(153, 102, 255, 0.2)',
-                            'rgba(255, 159, 64, 0.2)'
-                        ],
-                        borderColor: [
-                            'rgba(255, 99, 132, 1)',
-                            'rgba(54, 162, 235, 1)',
-                            'rgba(255, 206, 86, 1)',
-                            'rgba(75, 192, 192, 1)',
-                            'rgba(153, 102, 255, 1)',
-                            'rgba(255, 159, 64, 1)'
-                        ],
-                        borderWidth: 1
-                    }]
-                }
-            });
-        }
+document.addEventListener('DOMContentLoaded', function() {
+    // Safely parse the inventory data
+    let inventoryData;
+    try {
+        inventoryData = {{ inventory_data|tojson|safe }};
+    } catch (e) {
+        console.error('Error parsing inventory data:', e);
+        inventoryData = {
+            category: { labels: [], price_data: [], quantity_data: [] },
+            item: { labels: [], price_data: [], quantity_data: [] }
+        };
     }
 
-    document.getElementById('categoryChartToggle').addEventListener('change', function() {
-        updateCategoryChart(this.value);
-    });
+    const ctx = document.getElementById('inventoryChart').getContext('2d');
+    let inventoryChart;
 
-    updateCategoryChart('price');
-
-    // Sales Chart
-    var salesData = {{ sales_data|tojson }};
-    var ctx2 = document.getElementById('salesChart').getContext('2d');
-    var salesChart;
-
-    function updateSalesChart(dataType) {
-        if (salesChart) {
-            salesChart.destroy();
+    function updateInventoryChart(viewType, dataType) {
+        if (inventoryChart) {
+            inventoryChart.destroy();
         }
 
-        var chartData = {
-            labels: salesData[dataType].labels,
-            datasets: [{
-                label: dataType === 'product' ? 'Sales per Product' : 'Today\'s Sales',
-                data: salesData[dataType].data,
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            }]
+        const data = inventoryData[viewType] || { labels: [], price_data: [], quantity_data: [] };
+        const values = dataType === 'price' ? data.price_data : data.quantity_data;
+
+        // Always use pie chart for both views
+        const chartConfig = {
+            type: 'pie',  // Changed to always be 'pie'
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        'rgba(59, 130, 246, 0.2)',
+                        'rgba(16, 185, 129, 0.2)',
+                        'rgba(245, 158, 11, 0.2)',
+                        'rgba(239, 68, 68, 0.2)',
+                        'rgba(99, 102, 241, 0.2)',
+                        'rgba(236, 72, 153, 0.2)'
+                    ],
+                    borderColor: [
+                        'rgba(59, 130, 246, 1)',
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(245, 158, 11, 1)',
+                        'rgba(239, 68, 68, 1)',
+                        'rgba(99, 102, 241, 1)',
+                        'rgba(236, 72, 153, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,  // Always show legend
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                const value = context.raw;
+                                if (dataType === 'price') {
+                                    label += '₹' + value.toLocaleString('en-IN', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    });
+                                } else {
+                                    label += value + ' items';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
         };
 
-        if (salesData[dataType].labels.length > 0) {
-            salesChart = new Chart(ctx2, {
-                type: 'bar',
-                data: chartData
-            });
+        inventoryChart = new Chart(ctx, chartConfig);
+    }
+
+    // Event listeners for toggles
+    document.getElementById('viewTypeToggle').addEventListener('change', function() {
+        updateInventoryChart(this.value, document.getElementById('dataTypeToggle').value);
+    });
+
+    document.getElementById('dataTypeToggle').addEventListener('change', function() {
+        updateInventoryChart(document.getElementById('viewTypeToggle').value, this.value);
+    });
+
+    // Initialize with category view and price data
+    updateInventoryChart('category', 'price');
+});
+
+// Sales Chart
+let salesData;
+try {
+    salesData = {{ sales_data|tojson|safe }};
+} catch (e) {
+    console.error('Error parsing sales data:', e);
+    salesData = {
+        product: { labels: [], revenue_data: [], quantity_data: [] },
+        today: { labels: [], revenue_data: [], quantity_data: [] }
+    };
+}
+
+const salesCtx = document.getElementById('salesChart').getContext('2d');
+let salesChart;
+
+function updateSalesChart(viewType) {
+    if (salesChart) {
+        salesChart.destroy();
+    }
+
+    const data = salesData[viewType] || { labels: [], revenue_data: [], quantity_data: [] };
+    
+    const chartConfig = {
+        type: 'bar',  // Always use bar chart
+        data: {
+            labels: data.labels,
+            datasets: [
+                {
+                    label: 'Revenue',
+                    data: viewType === 'product' ? data.revenue_data : data.data,
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                },
+                {
+                    label: 'Quantity',
+                    data: viewType === 'product' ? data.quantity_data : data.quantity_data,
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                    borderColor: 'rgba(16, 185, 129, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    yAxisID: 'quantity'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            const value = context.raw;
+                            if (context.dataset.label === 'Quantity') {
+                                return label + value + ' units';
+                            }
+                            return label + '₹' + value.toLocaleString('en-IN', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: viewType === 'today' ? 0 : 45,
+                        minRotation: viewType === 'today' ? 0 : 45
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    position: 'left',
+                    ticks: {
+                        callback: function(value) {
+                            return '₹' + value.toLocaleString('en-IN');
+                        }
+                    }
+                },
+                quantity: {
+                    beginAtZero: true,
+                    position: 'right',
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return value + ' units';
+                        }
+                    }
+                }
+            }
         }
-    }
+    };
 
-    document.getElementById('salesChartToggle').addEventListener('change', function() {
-        updateSalesChart(this.value);
-    });
+    salesChart = new Chart(salesCtx, chartConfig);
+}
 
-    updateSalesChart('product');
+// Event listener for sales chart toggle
+document.getElementById('salesChartToggle').addEventListener('change', function() {
+    updateSalesChart(this.value);
+});
 
-    // Update product revenues with formatted currency
-    document.querySelectorAll('[id^="product-revenue-"]').forEach(element => {
-        const revenue = parseFloat(element.textContent.replace('₹', '').replace(',', ''));
-        element.textContent = formatIndianCurrency(revenue);
-    });
-
-    function formatIndianCurrency(num) {
-        return '₹' + num.toLocaleString('en-IN', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
-    }
+// Initialize sales chart with product view
+updateSalesChart('product');
 </script>
 {% endblock %}
 

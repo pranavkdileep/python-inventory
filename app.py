@@ -9,7 +9,7 @@ from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from functools import wraps
 import atexit
 
@@ -70,64 +70,154 @@ def get_category_data(user_email):
     """Get category data for specific user"""
     user_data = users[user_email]
     categories = {}
+    category_prices = {}
+    
     for item in user_data['inventory']:
         category = item.get('category', 'Uncategorized')
+        quantity = item.get('quantity', 0)
+        price = item.get('price', 0) * quantity
+        
+        # Update quantities
         if category in categories:
-            categories[category] += item.get('quantity', 0)
+            categories[category] += quantity
         else:
-            categories[category] = item.get('quantity', 0)
+            categories[category] = quantity
+            
+        # Update prices
+        if category in category_prices:
+            category_prices[category] += price
+        else:
+            category_prices[category] = price
     
     # Ensure we have at least some data
     if not categories:
         categories['No Data'] = 0
+        category_prices['No Data'] = 0
         
+    # Sort categories by total price
+    sorted_categories = sorted(category_prices.items(), key=lambda x: x[1], reverse=True)
+    labels = [item[0] for item in sorted_categories]
+    price_data = [item[1] for item in sorted_categories]
+    quantity_data = [categories[label] for label in labels]
+    
     return {
-        'labels': list(categories.keys()),
-        'data': list(categories.values())
+        'labels': labels,
+        'price_data': price_data,
+        'quantity_data': quantity_data
     }
 
 def get_sales_data(user_email):
-    """Get sales data for specific user"""
+    """Get sales data for charts"""
     user_data = users[user_email]
-    sales = {}
+    orders = user_data.get('orders', [])
     
-    # Get the last 6 months
-    today = datetime.now()
-    for i in range(6):
-        month = (today - timedelta(days=30 * i)).strftime("%Y-%m")
-        sales[month] = 0
+    # Product-wise sales data
+    product_sales = {}
+    for order in orders:
+        for item in order.get('items', []):
+            name = item.get('name', 'Unknown')
+            quantity = item.get('quantity', 0)
+            price = item.get('price', 0) * quantity
+            
+            if name in product_sales:
+                product_sales[name]['quantity'] += quantity
+                product_sales[name]['revenue'] += price
+            else:
+                product_sales[name] = {'quantity': quantity, 'revenue': price}
     
-    # Fill in actual sales data
-    for order in user_data['orders']:
-        month = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m")
-        if month in sales:
-            sales[month] += order.get('total', 0)
+    # Sort products by revenue
+    sorted_products = sorted(product_sales.items(), key=lambda x: x[1]['revenue'], reverse=True)
     
-    # Sort by month
-    sorted_sales = sorted(sales.items())
+    # Today's sales data (by hour)
+    today = datetime.now().date()
+    hourly_sales = {i: {'revenue': 0, 'quantity': 0} for i in range(24)}  # Initialize all hours
+    
+    for order in orders:
+        order_date = datetime.strptime(order.get('date', ''), "%Y-%m-%d %H:%M:%S").date()
+        if order_date == today:
+            hour = datetime.strptime(order.get('date', ''), "%Y-%m-%d %H:%M:%S").hour
+            hourly_sales[hour]['revenue'] += order.get('total', 0)
+            for item in order.get('items', []):
+                hourly_sales[hour]['quantity'] += item.get('quantity', 0)
     
     return {
-        'labels': [item[0] for item in sorted_sales],
-        'data': [item[1] for item in sorted_sales]
+        'product': {
+            'labels': [item[0] for item in sorted_products[:10]],  # Top 10 products
+            'revenue_data': [item[1]['revenue'] for item in sorted_products[:10]],
+            'quantity_data': [item[1]['quantity'] for item in sorted_products[:10]]
+        },
+        'today': {
+            'labels': [f'{i:02d}:00' for i in range(24)],
+            'data': [hourly_sales[i]['revenue'] for i in range(24)],
+            'quantity_data': [hourly_sales[i]['quantity'] for i in range(24)]
+        }
     }
 
 def get_inventory_data(user_email):
-    """Get inventory data for specific user"""
+    """Get both category and item-wise inventory data"""
     user_data = users[user_email]
-    inventory_items = sorted(user_data['inventory'], 
-                           key=lambda x: x.get('quantity', 0),
-                           reverse=True)[:10]  # Get top 10 items
+    
+    # Initialize empty dictionaries
+    categories = {}
+    category_prices = {}
+    items = {}
+    item_prices = {}
+    
+    # Process inventory data
+    for item in user_data.get('inventory', []):
+        category = item.get('category', 'Uncategorized')
+        name = item.get('name', 'Unknown')
+        quantity = float(item.get('quantity', 0))
+        price = float(item.get('price', 0)) * quantity
+        
+        # Update category data
+        if category in categories:
+            categories[category] += quantity
+            category_prices[category] += price
+        else:
+            categories[category] = quantity
+            category_prices[category] = price
+            
+        # Update item data
+        if name in items:
+            items[name] += quantity
+            item_prices[name] += price
+        else:
+            items[name] = quantity
+            item_prices[name] = price
     
     # Ensure we have at least some data
-    if not inventory_items:
-        return {
-            'labels': ['No Data'],
-            'data': [0]
-        }
+    if not categories:
+        categories['No Data'] = 0
+        category_prices['No Data'] = 0
+    
+    if not items:
+        items['No Items'] = 0
+        item_prices['No Items'] = 0
+    
+    # Sort categories by total price
+    sorted_categories = sorted(category_prices.items(), key=lambda x: x[1], reverse=True)
+    category_labels = [item[0] for item in sorted_categories]
+    category_price_data = [item[1] for item in sorted_categories]
+    category_quantity_data = [categories[label] for label in category_labels]
+    
+    # Sort items by total price
+    sorted_items = sorted(item_prices.items(), key=lambda x: x[1], reverse=True)
+    item_labels = [item[0] for item in sorted_items]
+    item_price_data = [item[1] for item in sorted_items]
+    item_quantity_data = [items[label] for label in item_labels]
     
     return {
-        'labels': [item.get('name', 'Unknown') for item in inventory_items],
-        'data': [item.get('quantity', 0) for item in inventory_items]
+        'category': {
+            'labels': category_labels,
+            'price_data': category_price_data,
+            'quantity_data': category_quantity_data
+        },
+        'item': {
+            'labels': item_labels,
+            'price_data': item_price_data,
+            'quantity_data': item_quantity_data
+        }
     }
 
 def get_forecasting_data(user_email):
@@ -505,107 +595,20 @@ def analytics_page():
     user_email = session['user_email']
     user_data = init_user_if_needed(user_email)
     
-    # Category data
-    category_data = {
-        'labels': [],
-        'price_data': [],
-        'quantity_data': []
-    }
+    # Get inventory data for charts
+    inventory_data = get_inventory_data(user_email)
     
-    # Item data (new)
-    item_data = {
-        'labels': [],
-        'price_data': [],
-        'quantity_data': []
-    }
+    # Get sales data
+    sales_data = get_sales_data(user_email)
     
-    # Group by category
-    category_totals = {}
-    for item in user_data['inventory']:
-        category = item['category']
-        if category not in category_totals:
-            category_totals[category] = {
-                'total_price': 0,
-                'total_quantity': 0
-            }
-        category_totals[category]['total_price'] += item['price'] * item['quantity']
-        category_totals[category]['total_quantity'] += item['quantity']
-    
-    # Prepare category data
-    for category, totals in category_totals.items():
-        category_data['labels'].append(category)
-        category_data['price_data'].append(totals['total_price'])
-        category_data['quantity_data'].append(totals['total_quantity'])
-    
-    # Prepare item data
-    for item in user_data['inventory']:
-        item_data['labels'].append(item['name'])
-        item_data['price_data'].append(item['price'] * item['quantity'])
-        item_data['quantity_data'].append(item['quantity'])
-    
-    # Sales data
-    sales_data = {
-        'product': {
-            'labels': [],
-            'data': []
-        },
-        'today': {
-            'labels': ['Total Sales Today'],
-            'data': [0]  # Initialize with 0
-        }
-    }
-    
-    # Product sales data
-    product_sales = {}
-    for order in user_data['orders']:
-        for item in order['items']:
-            if item['name'] not in product_sales:
-                product_sales[item['name']] = 0
-            product_sales[item['name']] += item['quantity'] * item['price']
-    
-    # Get top 5 products by sales
-    top_products = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)[:5]
-    sales_data['product']['labels'] = [item[0] for item in top_products]
-    sales_data['product']['data'] = [item[1] for item in top_products]
-    
-    # Today's total sales (modified)
-    today = datetime.now().date()
-    today_total = 0
-    for order in user_data['orders']:
-        order_date = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S").date()
-        if order_date == today:
-            today_total += float(order.get('total', 0))
-    
-    sales_data['today']['data'] = [today_total]
-    
-    # Get top selling products for the table
-    top_products = []
-    product_sales = {}
-    for order in user_data['orders']:
-        for item in order['items']:
-            if item['name'] not in product_sales:
-                product_sales[item['name']] = {
-                    'quantity': 0,
-                    'revenue': 0
-                }
-            product_sales[item['name']]['quantity'] += item['quantity']
-            product_sales[item['name']]['revenue'] += item['quantity'] * item['price']
-    
-    # Sort by quantity and get top 5
-    sorted_products = sorted(product_sales.items(), key=lambda x: x[1]['quantity'], reverse=True)
-    for product, data in sorted_products[:5]:
-        top_products.append({
-            'name': product,
-            'quantity': data['quantity'],
-            'revenue': data['revenue']
-        })
+    # Get top products
+    top_products = get_top_products(user_email)
     
     return render_template('analytics.html',
-                         category_data=category_data,
-                         item_data=item_data,  # Add item data
+                         inventory_data=inventory_data,
                          sales_data=sales_data,
                          top_products=top_products,
-                         company_name=user_data['company_name'])
+                         company_name=user_data.get('company_name', 'Inventory Dashboard'))
 
 def get_sales_mini_data(user_email):
     """Get recent sales data for mini chart"""
@@ -670,6 +673,36 @@ def get_today_sales_data(user_email):
         'data': list(today_sales.values())
     }
 
+def get_top_products(user_email):
+    """Get top selling products"""
+    user_data = users[user_email]
+    orders = user_data.get('orders', [])
+    
+    # Aggregate product sales
+    product_sales = {}
+    for order in orders:
+        for item in order.get('items', []):
+            name = item.get('name', 'Unknown')
+            quantity = item.get('quantity', 0)
+            price = item.get('price', 0)
+            revenue = price * quantity
+            
+            if name in product_sales:
+                product_sales[name]['quantity'] += quantity
+                product_sales[name]['revenue'] += revenue
+            else:
+                product_sales[name] = {
+                    'name': name,
+                    'quantity': quantity,
+                    'revenue': revenue
+                }
+    
+    # Convert to list and sort by revenue
+    top_products = list(product_sales.values())
+    top_products.sort(key=lambda x: x['revenue'], reverse=True)
+    
+    return top_products[:5]  # Return top 5 products
+
 @app.route('/stream')
 @login_required
 def stream():
@@ -704,81 +737,162 @@ def stream():
     
     return Response(event_stream(), mimetype="text/event-stream")
 
-@app.route('/download_report')
+@app.route('/generate_report')
 @login_required
-def download_report():
+def generate_report():
     user_email = session['user_email']
-    user_data = init_user_if_needed(user_email)
-    inventory = user_data['inventory']
+    user_data = users[user_email]
     
+    # Create a PDF buffer
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     elements = []
     
+    # Styles
     styles = getSampleStyleSheet()
-    elements.append(Paragraph(f"Inventory Report - {user_data['company_name']}", styles['Title']))
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        spaceAfter=30,
+        alignment=1  # Center alignment
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=16,
+        spaceAfter=20,
+        textColor=colors.HexColor('#666666')
+    )
+    
+    # Add company name and report title
+    elements.append(Paragraph(user_data.get('company_name', 'Company Name'), title_style))
+    elements.append(Paragraph('Sales Report', subtitle_style))
+    
+    # Add date range
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    date_text = f"Generated on: {current_date}"
+    elements.append(Paragraph(date_text, styles['Normal']))
     elements.append(Spacer(1, 20))
     
-    # Create table data with proper value calculations
-    data = [['Name', 'Category', 'Quantity', 'Price (INR)', 'Total Value (INR)']]
-    total_inventory_value = 0
+    # Sales Summary Table
+    orders = user_data.get('orders', [])
+    total_revenue = sum(order.get('total', 0) for order in orders)
+    total_orders = len(orders)
     
-    for item in inventory:
-        try:
-            quantity = float(item['quantity'])
-            price = float(item['price'])
-            total_value = quantity * price
-            total_inventory_value += total_value
-            
-            data.append([
-                str(item['name']),
-                str(item['category']),
-                f"{quantity:,.0f}",  # No decimals for quantity
-                f"{price:,.2f}",     # 2 decimals for price
-                f"{total_value:,.2f}" # 2 decimals for total value
-            ])
-        except (ValueError, KeyError) as e:
-            # Skip items with invalid data
-            print(f"Error processing item {item.get('name', 'unknown')}: {str(e)}")
-            continue
+    summary_data = [
+        ['Sales Summary', ''],
+        ['Total Revenue', f"₹{total_revenue:,.2f}"],
+        ['Total Orders', str(total_orders)],
+        ['Average Order Value', f"₹{(total_revenue/total_orders if total_orders > 0 else 0):,.2f}"]
+    ]
     
-    # Add total row with proper formatting
-    data.append(['', '', '', 'Total:', f"{total_inventory_value:,.2f}"])
-    
-    # Create and style the table
-    table = Table(data)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (3, 1), (4, -1), 'RIGHT'),  # Right align price columns
+    summary_table = Table(summary_data, colWidths=[200, 200])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#666666')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 14),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.beige),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
     ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 30))
     
-    elements.append(table)
+    # Product-wise Sales Table
+    product_sales = {}
+    for order in orders:
+        for item in order.get('items', []):
+            name = item.get('name', 'Unknown')
+            quantity = item.get('quantity', 0)
+            price = item.get('price', 0)
+            revenue = price * quantity
+            
+            if name in product_sales:
+                product_sales[name]['quantity'] += quantity
+                product_sales[name]['revenue'] += revenue
+            else:
+                product_sales[name] = {'quantity': quantity, 'revenue': revenue}
     
-    # Add summary section
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("Summary:", styles['Heading2']))
-    elements.append(Paragraph(f"Total Items: {len(inventory)}", styles['Normal']))
-    elements.append(Paragraph(f"Total Inventory Value: INR: {total_inventory_value:,.2f}", styles['Normal']))
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 
-                            styles['Normal']))
+    # Sort products by revenue
+    sorted_products = sorted(product_sales.items(), key=lambda x: x[1]['revenue'], reverse=True)
     
+    # Product Sales Table
+    elements.append(Paragraph('Product-wise Sales', subtitle_style))
+    
+    product_data = [['Product Name', 'Quantity Sold', 'Revenue']]
+    for product_name, data in sorted_products:
+        product_data.append([
+            product_name,
+            str(data['quantity']),
+            f"₹{data['revenue']:,.2f}"
+        ])
+    
+    product_table = Table(product_data, colWidths=[200, 100, 100])
+    product_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#666666')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+    ]))
+    elements.append(product_table)
+    elements.append(Spacer(1, 30))
+    
+    # Recent Orders Table
+    elements.append(Paragraph('Recent Orders', subtitle_style))
+    
+    # Sort orders by date
+    sorted_orders = sorted(orders, key=lambda x: datetime.strptime(x.get('date', ''), "%Y-%m-%d %H:%M:%S"), reverse=True)
+    recent_orders = sorted_orders[:10]  # Get last 10 orders
+    
+    order_data = [['Order Date', 'Customer', 'Total']]
+    for order in recent_orders:
+        order_date = datetime.strptime(order.get('date', ''), "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+        order_data.append([
+            order_date,
+            order.get('customer', 'Unknown'),
+            f"₹{order.get('total', 0):,.2f}"
+        ])
+    
+    order_table = Table(order_data, colWidths=[133, 133, 133])
+    order_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#666666')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+    ]))
+    elements.append(order_table)
+    
+    # Build PDF
     doc.build(elements)
     buffer.seek(0)
     
     return send_file(
         buffer,
-        download_name=f'inventory_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf',
+        download_name=f'sales_report_{current_date}.pdf',
         as_attachment=True,
         mimetype='application/pdf'
     )

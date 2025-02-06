@@ -50,31 +50,49 @@
 <div class="modal fade" id="addOrderModal" tabindex="-1" aria-labelledby="addOrderModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addOrderModalLabel">Add New Order</h5>
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-semibold" id="addOrderModalLabel">Add New Order</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="addOrderForm">
-                    <div class="mb-3">
-                        <label for="customer" class="form-label">Customer</label>
-                        <input type="text" class="form-control" id="customer" name="customer" required>
+                    <div class="mb-4">
+                        <label for="customer" class="form-label text-secondary">Customer Name</label>
+                        <input type="text" class="form-control" id="customer" name="customer" required 
+                               placeholder="Enter customer name">
                     </div>
+
                     <div id="itemsContainer">
-                        <div class="mb-3 item-row">
-                            <label for="items" class="form-label">Item</label>
-                            <select class="form-select" name="items" required>
-                                <option value="">Select an item</option>
-                                {% for item in inventory %}
-                                <option value="{{ item.name }}">{{ item.name }}</option>
-                                {% endfor %}
-                            </select>
-                            <label for="quantities" class="form-label mt-2">Quantity</label>
-                            <input type="number" class="form-control" name="quantities" required min="1">
+                        <div class="card mb-3 border-0 bg-light">
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label text-secondary">Item</label>
+                                        <select class="form-select" name="items" required>
+                                            <option value="">Select an item</option>
+                                            {% for item in inventory %}
+                                            <option value="{{ item.name }}">{{ item.name }} - ₹{{ "{:,.2f}".format(item.price) }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label text-secondary">Quantity</label>
+                                        <input type="number" class="form-control" name="quantities" required min="1">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-secondary mb-3" id="addItemBtn">Add Another Item</button>
-                    <button type="submit" class="btn btn-primary">Add Order</button>
+
+                    <div class="d-flex gap-2 mb-4">
+                        <button type="button" class="btn btn-light" id="addItemBtn">
+                            <i data-lucide="plus" class="icon-sm me-1"></i> Add Another Item
+                        </button>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary py-2">Create Order</button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -106,31 +124,119 @@
         </div>
     </div>
 </div>
+
+<!-- Updated confirmation modal -->
+<div class="modal fade" id="confirmOrderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 400px;">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-body p-4 text-center">
+                <div class="mb-4">
+                    <div class="icon-box d-inline-block rounded-circle mb-4">
+                        <i data-lucide="shopping-cart" class="text-primary" style="width: 50px; height: 50px; padding: 12px;"></i>
+                    </div>
+                    <h4 class="modal-title mb-3">Confirm Order</h4>
+                    <p class="mb-0 text-secondary">Are you sure you want to place this order?</p>
+                </div>
+                <div class="d-flex justify-content-center gap-3">
+                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary px-4" id="confirmAddOrder">
+                        Yes, Place Order
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.modal-content {
+    border-radius: 15px;
+}
+
+.icon-box {
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+    padding: 1rem;
+}
+
+.modal .btn {
+    font-weight: 500;
+    padding: 0.5rem 1.5rem;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.modal .btn:hover {
+    transform: translateY(-1px);
+}
+
+.modal .btn-light {
+    background-color: #f8f9fa;
+    border-color: #f8f9fa;
+}
+
+.modal .btn-light:hover {
+    background-color: #e9ecef;
+    border-color: #e9ecef;
+}
+
+/* Add success animation */
+@keyframes checkmark {
+    0% { transform: scale(0); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.success-animation {
+    animation: checkmark 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.getElementById('addOrderForm').addEventListener('submit', function(e) {
-    e.preventDefault();
+document.addEventListener('DOMContentLoaded', function() {
+    const addOrderForm = document.getElementById('addOrderForm');
+    const confirmOrderModal = new bootstrap.Modal(document.getElementById('confirmOrderModal'));
     
-    const formData = new FormData(this);
-    
-    fetch('{{ url_for("add_order") }}', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showAlert('success', data.message);
-            location.reload();
-        } else {
-            showAlert('danger', 'Error: ' + data.message);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showAlert('danger', 'An error occurred while adding the order');
+    addOrderForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        confirmOrderModal.show();
+    });
+
+    document.getElementById('confirmAddOrder').addEventListener('click', function() {
+        const formData = new FormData(addOrderForm);
+        
+        // Add items data
+        const items = [];
+        document.querySelectorAll('.order-item').forEach(item => {
+            items.push({
+                name: item.querySelector('select[name="item_name[]"]').value,
+                quantity: parseFloat(item.querySelector('input[name="quantity[]"]').value),
+                price: parseFloat(item.querySelector('input[name="price[]"]').value)
+            });
+        });
+        formData.append('items', JSON.stringify(items));
+        
+        fetch('/add_order', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                confirmOrderModal.hide();
+                bootstrap.Modal.getInstance(document.getElementById('addOrderModal')).hide();
+                addOrderForm.reset();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Failed to add order'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error adding order');
+        });
     });
 });
 
@@ -201,19 +307,38 @@ document.addEventListener('click', function(e) {
 function addItemRow(containerId, itemName = '', itemQuantity = '') {
     const container = document.getElementById(containerId);
     const newRow = document.createElement('div');
-    newRow.className = 'mb-3 item-row';
+    newRow.className = 'card mb-3 border-0 bg-light';
     newRow.innerHTML = `
-        <label for="items" class="form-label">Item</label>
-        <select class="form-select" name="items" required>
-            <option value="">Select an item</option>
-            {% for item in inventory %}
-            <option value="{{ item.name }}"${itemName === '{{ item.name }}' ? ' selected' : ''}>{{ item.name }}</option>
-            {% endfor %}
-        </select>
-        <label for="quantities" class="form-label mt-2">Quantity</label>
-        <input type="number" class="form-control" name="quantities" value="${itemQuantity}" required min="1">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label class="form-label text-secondary">Item</label>
+                    <select class="form-select" name="items" required>
+                        <option value="">Select an item</option>
+                        {% for item in inventory %}
+                        <option value="{{ item.name }}"${itemName === '{{ item.name }}' ? ' selected' : ''}>{{ item.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label text-secondary">Quantity</label>
+                    <input type="number" class="form-control" name="quantities" value="${itemQuantity}" required min="1">
+                </div>
+            </div>
+            <button type="button" class="btn btn-link text-danger p-0 mt-2 remove-item">
+                <i data-lucide="trash-2" class="icon-sm"></i> Remove
+            </button>
+        </div>
     `;
     container.appendChild(newRow);
+    
+    // Initialize Lucide icons for the new row
+    lucide.createIcons();
+    
+    // Add remove functionality
+    newRow.querySelector('.remove-item').addEventListener('click', function() {
+        newRow.remove();
+    });
 }
 
 function showAlert(type, message) {

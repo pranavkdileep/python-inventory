@@ -3,88 +3,183 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Dashboard</h1>
-</div>
+<div class="container-fluid">
+    <!-- Updated header with buttons -->
+    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+        <h1 class="h2">Dashboard</h1>
+        <div class="d-flex gap-3">
+            <a href="{{ url_for('inventory_page') }}" class="btn btn-primary px-4">
+                <i data-lucide="plus-circle" class="icon me-2" style="width: 18px; height: 18px;"></i>
+                New Item
+            </a>
+            <a href="{{ url_for('generate_report') }}" class="btn btn-outline-secondary px-4" id="downloadReport">
+                <i data-lucide="download" class="icon me-2" style="width: 18px; height: 18px;"></i>
+                Sales Report
+            </a>
+        </div>
+    </div>
 
-<div class="row mb-4">
-    <div class="col-md-3 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total Inventory Items</h5>
-                <p class="card-text display-4" id="inventory-count">{{ inventory_count }}</p>
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body">
+                    <h6 class="card-title">Total Items</h6>
+                    <p class="card-text" id="inventory-count">{{ inventory_count }}</p>
+                    <i data-lucide="box" class="card-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body">
+                    <h6 class="card-title">Orders</h6>
+                    <p class="card-text" id="order-count">{{ orders|length }}</p>
+                    <i data-lucide="shopping-cart" class="card-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body">
+                    <h6 class="card-title">Revenue</h6>
+                    <p class="card-text" id="total-sales">₹{{ "{:,.2f}".format(total_sales) }}</p>
+                    <i data-lucide="trending-up" class="card-icon"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card h-100">
+                <div class="card-body">
+                    <h6 class="card-title">Low Stock Items</h6>
+                    <p class="card-text">{{ low_stock_products|length }}</p>
+                    <i data-lucide="alert-circle" class="card-icon"></i>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total Orders</h5>
-                <p class="card-text display-4" id="order-count">{{ orders|length }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total Sales</h5>
-                <p class="card-text display-4" id="total-sales">₹{{ "{:,.2f}".format(total_sales) }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Last Update</h5>
-                <p class="card-text" id="last-update">Just now</p>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Low Stock Products</h5>
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Product Name</th>
-                            <th>Current Stock</th>
-                            <th>Category</th>
-                           
-                        </tr>
-                    </thead>
-                    <tbody id="low-stock-table">
-                        {% for product in low_stock_products %}
-                        <tr>
-                            <td>{{ product.name }}</td>
-                            <td>{{ product.quantity }}</td>
-                            <td>{{ product.category }}</td>
-                            
-                        </tr>
+    <div class="row g-4">
+        <div class="col-md-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Recent Orders</h5>
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders[:5] %}
+                                <tr>
+                                    <td>#{{ order.id }}</td>
+                                    <td>{{ order.customer }}</td>
+                                    <td>₹{{ "{:,.2f}".format(order.total) }}</td>
+                                    <td>
+                                        <span class="badge bg-success-subtle">Completed</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Low Stock Alert</h5>
+                    <div class="list-group list-group-flush">
+                        {% for product in low_stock_products[:5] %}
+                        <div class="list-group-item border-0 px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ product.name }}</h6>
+                                    <small class="text-secondary">{{ product.category }}</small>
+                                </div>
+                                <span class="badge bg-danger-subtle">{{ product.quantity }} left</span>
+                            </div>
+                        </div>
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+
+    <div style="height: 70px;"></div>
 </div>
 
-<div class="row">
-    <div class="col-md-4 mb-3">
-        <a href="{{ url_for('inventory_page') }}" class="btn btn-primary btn-lg btn-block w-100">
-            <i data-lucide="plus-circle"></i> Add New Item
-        </a>
-    </div>
-    <div class="col-md-4 mb-3">
-        <a href="{{ url_for('download_report') }}" class="btn btn-secondary btn-lg btn-block w-100" id="downloadReport">
-            <i data-lucide="download"></i> Download Report
-        </a>
-    </div>
-</div>
+<style>
+    :root {
+        --sidebar-width: 240px;
+    }
+    
+    @media (max-width: 768px) {
+        :root {
+            --sidebar-width: 0px;
+        }
+        .fixed-bottom {
+            left: 0 !important;
+        }
+    }
 
+    .fixed-bottom {
+        box-shadow: 0 -1px 3px rgba(0,0,0,0.05);
+    }
+
+    .fixed-bottom .btn {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .fixed-bottom .btn:hover {
+        transform: translateY(-1px);
+    }
+
+    .fixed-bottom .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+
+    .fixed-bottom .btn-outline-secondary:hover {
+        background-color: #f8f9fa;
+        color: #333;
+        border-color: #dee2e6;
+    }
+
+    /* Button styles */
+    .btn {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+        transform: translateY(-1px);
+    }
+
+    .btn-primary {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+
+    .btn-outline-secondary:hover {
+        background-color: #f8f9fa;
+        color: #333;
+        border-color: #dee2e6;
+    }
+</style>
 
 {% endblock %}
 
@@ -98,7 +193,6 @@
             document.getElementById('inventory-count').textContent = data.inventory_count;
             document.getElementById('order-count').textContent = data.order_count;
             document.getElementById('total-sales').textContent = formatIndianCurrency(data.total_sales);
-            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
 
             // Update low stock products table
             const lowStockTable = document.getElementById('low-stock-table');
@@ -119,8 +213,6 @@
             });
         }
     };
-
-   
 
     function formatIndianCurrency(num) {
         return '₹' + parseFloat(num).toLocaleString('en-IN', {maximumFractionDigits: 2, minimumFractionDigits: 2});

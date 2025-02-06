@@ -9,14 +9,20 @@
 
 <div class="row">
     <div class="col-md-6">
-        <h3>General Settings</h3>
-        <form id="companyNameForm">
-            <div class="mb-3">
-                <label for="companyName" class="form-label">Company Name</label>
-                <input type="text" class="form-control" id="companyName" name="company_name" value="{{ company_name }}">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title mb-4">General Settings</h5>
+                <form id="companyNameForm">
+                    <div class="mb-3">
+                        <label for="companyName" class="form-label">Company Name</label>
+                        <input type="text" class="form-control" id="companyName" name="company_name" value="{{ company_name }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i data-lucide="save" class="me-2"></i> Save Settings
+                    </button>
+                </form>
             </div>
-            <button type="submit" class="btn btn-primary">Save Settings</button>
-        </form>
+        </div>
     </div>
     <div class="col-md-6">
         <h3>Notification Settings</h3>
