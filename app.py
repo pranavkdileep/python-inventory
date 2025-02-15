@@ -926,127 +926,95 @@ def delete_product(id):
     inventory = [item for item in inventory if item['id'] != id]
     return jsonify({"success": True, "message": "Product deleted successfully"})
 
-@app.route('/get_order/<int:id>')
+@app.route('/get_order/<order_index>')
 @login_required
-def get_order(id):
-    user_email = session['user_email']
-    user_data = users[user_email]
-    
-    order = next((order for order in user_data['orders'] if order['id'] == id), None)
-    if order:
-        return jsonify(order)
-    return jsonify({"error": "Order not found"}), 404
-
-@app.route('/delete_order/<int:id>', methods=['POST'])
-@login_required
-def delete_order(id):
-    user_email = session['user_email']
-    user_data = users[user_email]
-    
-    order = next((order for order in user_data['orders'] if order['id'] == id), None)
-    if order:
-        # Restore inventory quantities
-        for item in order['items']:
-            inventory_item = next((inv for inv in user_data['inventory'] if inv['id'] == item['id']), None)
-            if inventory_item:
-                inventory_item['quantity'] += item['quantity']
-        
-        # Remove order
-        user_data['orders'] = [o for o in user_data['orders'] if o['id'] != id]
-        
-        # Add to history
-        user_data['history'].append({
-            'action': 'Order Deleted',
-            'order_id': id,
-            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-        
-        return jsonify({"success": True, "message": "Order deleted successfully"})
-    return jsonify({"success": False, "message": "Order not found"}), 404
-
-@app.route('/edit_order', methods=['POST'])
-@login_required
-def edit_order():
+def get_order(order_index):
     try:
         user_email = session['user_email']
         user_data = users[user_email]
+        index = int(order_index)
         
-        order_id = int(request.form['id'])
-        customer = request.form['customer']
-        items = request.form.getlist('items')
-        quantities = request.form.getlist('quantities')
-        
-        # Find the order
-        order = next((o for o in user_data['orders'] if o['id'] == order_id), None)
-        if not order:
+        if 0 <= index < len(user_data['orders']):
             return jsonify({
-                "success": False,
-                "message": "Order not found"
-            }), 404
-        
-        # Restore previous inventory quantities
-        for item in order['items']:
-            inv_item = next((i for i in user_data['inventory'] if i['name'] == item['name']), None)
-            if inv_item:
-                inv_item['quantity'] += item['quantity']
-        
-        # Process new order items
-        new_items = []
-        total = 0
-        
-        for item_name, quantity in zip(items, quantities):
-            quantity = int(quantity)
-            inv_item = next((i for i in user_data['inventory'] if i['name'] == item_name), None)
-            
-            if not inv_item:
-                return jsonify({
-                    "success": False,
-                    "message": f"Item '{item_name}' not found"
-                }), 404
-            
-            if inv_item['quantity'] < quantity:
-                return jsonify({
-                    "success": False,
-                    "message": f"Insufficient stock for '{item_name}'"
-                }), 400
-            
-            # Update inventory
-            inv_item['quantity'] -= quantity
-            
-            # Add to order items
-            item_total = quantity * inv_item['price']
-            new_items.append({
-                'name': item_name,
-                'quantity': quantity,
-                'price': inv_item['price']
+                'success': True,
+                'order': user_data['orders'][index]
             })
-            total += item_total
-        
-        # Update order
-        order['customer'] = customer
-        order['items'] = new_items
-        order['total'] = total
-        order['date'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Add to history
-        user_data['history'].append({
-            'action': 'Order Updated',
-            'order_id': order['id'],
-            'customer': customer,
-            'date': order['date']
-        })
-        
-        return jsonify({
-            "success": True,
-            "message": "Order updated successfully"
-        })
-        
+        else:
+            return jsonify({'success': False, 'error': 'Order not found'})
     except Exception as e:
-        print(f"Error updating order: {e}")
-        return jsonify({
-            "success": False,
-            "message": str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/edit_order/<order_index>', methods=['POST'])
+@login_required
+def edit_order(order_index):
+    try:
+        user_email = session['user_email']
+        user_data = users[user_email]
+        index = int(order_index)
+        
+        if 0 <= index < len(user_data['orders']):
+            old_order = user_data['orders'][index]
+            
+            # Return old items to inventory
+            for item in old_order.get('items', []):
+                item_name = item.get('name')
+                item_quantity = item.get('quantity', 0)
+                for inv_item in user_data['inventory']:
+                    if inv_item['name'] == item_name:
+                        inv_item['quantity'] += item_quantity
+                        break
+            
+            # Get new order data
+            customer = request.form.get('customer')
+            order_date = request.form.get('order_date')
+            items = json.loads(request.form.get('items', '[]'))
+            
+            if not customer or not items or not order_date:
+                return jsonify({'success': False, 'error': 'Missing required fields'})
+            
+            # Convert date string to datetime
+            try:
+                order_datetime = datetime.strptime(order_date, '%Y-%m-%dT%H:%M')
+                formatted_date = order_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid date format'})
+            
+            total = 0
+            # Update inventory and calculate total
+            for item in items:
+                quantity = int(item['quantity'])
+                price = float(item['price'])
+                item_total = quantity * price
+                
+                # Find and update inventory
+                inventory_item = next(
+                    (inv_item for inv_item in user_data['inventory'] if inv_item['name'] == item['name']),
+                    None
+                )
+                
+                if not inventory_item:
+                    return jsonify({'success': False, 'error': f'Item not found: {item["name"]}'})
+                
+                if inventory_item['quantity'] < quantity:
+                    return jsonify({'success': False, 'error': f'Insufficient quantity for {item["name"]}'})
+                
+                inventory_item['quantity'] -= quantity
+                total += item_total
+            
+            # Update order
+            user_data['orders'][index] = {
+                'customer': customer,
+                'items': items,
+                'total': total,
+                'date': formatted_date
+            }
+            
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Order not found'})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/get_item/<int:id>')
 @login_required
@@ -1134,6 +1102,230 @@ def stocks():
                          low_stock_products=low_stock_products,
                          orders=user_data['orders'],
                          username=username)
+
+@app.route('/delete_order/<order_index>', methods=['POST'])
+@login_required
+def delete_order(order_index):
+    try:
+        user_email = session['user_email']
+        user_data = users[user_email]
+        
+        # Convert order_index to integer
+        index = int(order_index)
+        
+        # Check if order exists
+        if 0 <= index < len(user_data.get('orders', [])):
+            # Get the order to be deleted
+            order = user_data['orders'][index]
+            
+            # Return items to inventory
+            for item in order.get('items', []):
+                item_name = item.get('name')
+                item_quantity = item.get('quantity', 0)
+                
+                # Find matching inventory item
+                for inv_item in user_data.get('inventory', []):
+                    if inv_item['name'] == item_name:
+                        inv_item['quantity'] += item_quantity
+                        break
+            
+            # Remove the order
+            user_data['orders'].pop(index)
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Order not found'})
+            
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Invalid order index'})
+    except Exception as e:
+        print(f"Error deleting order: {str(e)}")  # Add logging
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_daily_sales/<date>')
+@login_required
+def get_daily_sales(date):
+    try:
+        user_email = session['user_email']
+        user_data = users[user_email]
+        orders = user_data.get('orders', [])
+        
+        # Convert date string to datetime
+        selected_date = datetime.strptime(date, '%Y-%m-%d').date()
+        
+        # Initialize hourly sales
+        hourly_sales = {i: 0 for i in range(24)}
+        
+        # Calculate sales for selected date
+        for order in orders:
+            order_datetime = datetime.strptime(order.get('date', ''), "%Y-%m-%d %H:%M:%S")
+            if order_datetime.date() == selected_date:
+                hour = order_datetime.hour
+                hourly_sales[hour] += order.get('total', 0)
+        
+        return jsonify({
+            'success': True,
+            'sales': {
+                'labels': [f'{i:02d}:00' for i in range(24)],
+                'data': list(hourly_sales.values())
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/download_sales_report')
+@login_required
+def download_sales_report():
+    user_email = session['user_email']
+    user_data = init_user_if_needed(user_email)
+    
+    view = request.args.get('view')
+    report_type = request.args.get('type')
+    date = request.args.get('date')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    # Get and sort orders based on parameters
+    if report_type == 'overall':
+        orders = sorted(user_data['orders'], key=lambda x: x['date'], reverse=True)
+        filename = "overall_sales_report.pdf"
+    elif report_type == 'range' and start_date and end_date:
+        orders = [order for order in user_data['orders'] 
+                 if start_date <= order['date'].split()[0] <= end_date]
+        orders.sort(key=lambda x: x['date'], reverse=True)
+        filename = f"sales_report_{start_date}_to_{end_date}.pdf"
+    elif view == 'today' and date:
+        orders = [order for order in user_data['orders'] 
+                 if order['date'].startswith(date)]
+        orders.sort(key=lambda x: x['date'], reverse=True)
+        filename = f"sales_report_{date}.pdf"
+    elif view == 'product':
+        orders = sorted(user_data['orders'], key=lambda x: x['date'], reverse=True)
+        filename = "product_sales_report.pdf"
+    else:
+        return "Invalid parameters", 400
+
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=30
+    )
+
+    # Add title and date info
+    elements.append(Paragraph(f"Sales Report - {user_data.get('company_name', 'Company')}", title_style))
+    elements.append(Spacer(1, 12))
+
+    if report_type == 'range':
+        date_info = f"Period: {start_date} to {end_date}"
+    elif view == 'today':
+        date_info = f"Date: {date}"
+    else:
+        date_info = "Overall Sales Report"
+    elements.append(Paragraph(date_info, styles["Normal"]))
+    elements.append(Spacer(1, 20))
+
+    # Prepare data
+    if view == 'product':
+        # Product-wise summary with date range info
+        product_sales = {}
+        date_range = {'earliest': None, 'latest': None}
+        
+        for order in orders:
+            order_date = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S")
+            
+            # Update date range
+            if date_range['earliest'] is None or order_date < date_range['earliest']:
+                date_range['earliest'] = order_date
+            if date_range['latest'] is None or order_date > date_range['latest']:
+                date_range['latest'] = order_date
+                
+            for item in order['items']:
+                name = item['name']
+                if name not in product_sales:
+                    product_sales[name] = {'quantity': 0, 'revenue': 0}
+                product_sales[name]['quantity'] += item['quantity']
+                product_sales[name]['revenue'] += item['price'] * item['quantity']
+
+        # Add date range info for product view
+        if date_range['earliest'] and date_range['latest']:
+            elements.append(Paragraph(
+                f"Period: {date_range['earliest'].strftime('%Y-%m-%d')} to {date_range['latest'].strftime('%Y-%m-%d')}", 
+                styles["Normal"]
+            ))
+            elements.append(Spacer(1, 12))
+
+        table_data = [['Product', 'Quantity Sold', 'Revenue']]
+        for product, data in sorted(product_sales.items(), key=lambda x: x[1]['revenue'], reverse=True):
+            table_data.append([
+                product,
+                str(data['quantity']),
+                f"₹{data['revenue']:,.2f}"
+            ])
+    else:
+        # Order-wise details
+        table_data = [['Order ID', 'Date & Time', 'Customer', 'Items', 'Total']]
+        for i, order in enumerate(orders, 1):
+            items_str = ", ".join([f"{item['name']} (x{item['quantity']})" for item in order['items']])
+            # Parse and format the date for better readability
+            order_date = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S")
+            formatted_date = order_date.strftime("%Y-%m-%d %I:%M %p")
+            
+            table_data.append([
+                f"#{i:05d}",
+                formatted_date,
+                order['customer'],
+                items_str,
+                f"₹{order['total']:,.2f}"
+            ])
+
+    # Create table with adjusted column widths
+    if view == 'product':
+        col_widths = [250, 100, 150]  # Adjusted for product view
+    else:
+        col_widths = [60, 120, 100, 200, 80]  # Adjusted for order view
+    
+    table = Table(table_data, repeatRows=1, colWidths=col_widths)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        # Align specific columns
+        ('ALIGN', (3, 1), (3, -1), 'LEFT'),  # Items column left-aligned
+        ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),  # Total column right-aligned
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 20))
+
+    # Add summary
+    total_sales = sum(order['total'] for order in orders)
+    elements.append(Paragraph(f"Total Sales: ₹{total_sales:,.2f}", styles["Heading3"]))
+    elements.append(Paragraph(f"Number of Orders: {len(orders)}", styles["Normal"]))
+
+    # Generate PDF
+    doc.build(elements)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/pdf'
+    )
 
 if __name__ == '__main__':
     app.run(debug=True)

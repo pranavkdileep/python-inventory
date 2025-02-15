@@ -76,7 +76,7 @@
                             <tbody>
                                 {% for order in orders[:5] %}
                                 <tr>
-                                    <td>#{{ order.id }}</td>
+                                    <td>#{{ "%05d" | format(loop.index) }}</td>
                                     <td>{{ order.customer }}</td>
                                     <td>₹{{ "{:,.2f}".format(order.total) }}</td>
                                     <td>

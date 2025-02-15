@@ -33,12 +33,38 @@
     <div class="col-md-6">
         <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title mb-3">Sales Analysis</h5>
-                <div class="mb-3">
-                    <select id="salesChartToggle" class="form-select form-select-sm">
-                        <option value="product">Product Sales</option>
-                        <option value="today">Today's Sales</option>
-                    </select>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Sales Analysis</h5>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="reportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i data-lucide="download" class="icon me-1"></i>
+                            Download Report
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="reportDropdown">
+                            <li><a class="dropdown-item" href="#" onclick="downloadCurrentReport()">Current View Report</a></li>
+                            <li><a class="dropdown-item" href="/download_sales_report?type=overall">Full Report</a></li>
+                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#reportDateModal">Custom Date Range</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="sales-toggle">
+                        <button type="button" class="toggle-btn" onclick="updateSalesChart('product')" id="productSalesBtn">
+                            <i data-lucide="bar-chart-2" class="icon"></i>
+                            <span>Product</span>
+                        </button>
+                        <button type="button" class="toggle-btn active" onclick="updateSalesChart('today')" id="dailySalesBtn">
+                            <i data-lucide="line-chart" class="icon"></i>
+                            <span>Daily</span>
+                        </button>
+                    </div>
+                    <div class="d-flex align-items-center gap-2" id="dateSelectorContainer">
+                        <input type="date" class="form-control form-control-sm" id="salesDate">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setTodayDate()">
+                            <i data-lucide="calendar-clock" class="icon"></i>
+                            <span>Today</span>
+                        </button>
+                    </div>
                 </div>
                 <div style="height: 300px;">
                     <canvas id="salesChart"></canvas>
@@ -88,6 +114,36 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add this modal at the end of your content block -->
+<div class="modal fade" id="reportDateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title">Download Sales Report</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="reportForm">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label text-secondary">From</label>
+                            <input type="date" class="form-control" id="startDate" name="startDate">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label text-secondary">To</label>
+                            <input type="date" class="form-control" id="endDate" name="endDate">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="downloadCustomReport()">Download Report</button>
             </div>
         </div>
     </div>
@@ -214,21 +270,82 @@ try {
 const salesCtx = document.getElementById('salesChart').getContext('2d');
 let salesChart;
 
+// Add date handling functions
+document.addEventListener('DOMContentLoaded', function() {
+    // Set default date to today
+    const today = new Date();
+    const dateInput = document.getElementById('salesDate');
+    dateInput.value = today.toISOString().split('T')[0];
+    dateInput.max = today.toISOString().split('T')[0];
+    
+    // Add date change listener
+    dateInput.addEventListener('change', function() {
+        updateSalesChart('today');
+    });
+    
+    // Add click handlers for toggle buttons
+    document.getElementById('productSalesBtn').addEventListener('click', function() {
+        document.getElementById('dailySalesBtn').classList.remove('active');
+        this.classList.add('active');
+        document.getElementById('dateSelectorContainer').style.display = 'none';
+    });
+    
+    document.getElementById('dailySalesBtn').addEventListener('click', function() {
+        document.getElementById('productSalesBtn').classList.remove('active');
+        this.classList.add('active');
+        document.getElementById('dateSelectorContainer').style.display = 'flex';
+    });
+    
+    // Initial chart load
+    updateSalesChart('today');
+});
+
+function setTodayDate() {
+    const dateInput = document.getElementById('salesDate');
+    dateInput.value = new Date().toISOString().split('T')[0];
+    updateSalesChart('today');
+}
+
 function updateSalesChart(viewType) {
     if (salesChart) {
         salesChart.destroy();
     }
 
-    const data = salesData[viewType] || { labels: [], revenue_data: [], quantity_data: [] };
-    
+    if (viewType === 'today') {
+        const selectedDate = document.getElementById('salesDate').value;
+        fetchDailySales(selectedDate);
+    } else {
+        // Existing product chart code
+        const data = salesData[viewType] || { labels: [], revenue_data: [], quantity_data: [] };
+        renderChart(viewType, data);
+    }
+}
+
+function fetchDailySales(date) {
+    fetch(`/get_daily_sales/${date}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderChart('today', data.sales);
+            } else {
+                alert('Error loading sales data');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error loading sales data');
+        });
+}
+
+function renderChart(viewType, data) {
     const chartConfig = {
-        type: 'bar',  // Always use bar chart
+        type: viewType === 'product' ? 'bar' : 'line',
         data: {
             labels: data.labels,
-            datasets: [
+            datasets: viewType === 'product' ? [
                 {
                     label: 'Revenue',
-                    data: viewType === 'product' ? data.revenue_data : data.data,
+                    data: data.revenue_data,
                     backgroundColor: 'rgba(59, 130, 246, 0.2)',
                     borderColor: 'rgba(59, 130, 246, 1)',
                     borderWidth: 1,
@@ -236,16 +353,44 @@ function updateSalesChart(viewType) {
                 },
                 {
                     label: 'Quantity',
-                    data: viewType === 'product' ? data.quantity_data : data.quantity_data,
+                    data: data.quantity_data,
                     backgroundColor: 'rgba(16, 185, 129, 0.2)',
                     borderColor: 'rgba(16, 185, 129, 1)',
                     borderWidth: 1,
                     borderRadius: 4,
                     yAxisID: 'quantity'
                 }
+            ] : [
+                {
+                    label: 'Revenue',
+                    data: data.data,
+                    fill: true,
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    fill: {
+                        target: 'origin',
+                        above: 'rgba(59, 130, 246, 0.1)',
+                    },
+                    cubicInterpolationMode: 'monotone',
+                    segment: {
+                        borderColor: function(ctx) {
+                            if (ctx.p0.parsed.y > ctx.p1.parsed.y) {
+                                return 'rgba(255, 99, 132, 1)';
+                            }
+                            return 'rgba(75, 192, 192, 1)';
+                        }
+                    }
+                }
             ]
         },
-        options: {
+        options: viewType === 'product' ? {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
@@ -304,19 +449,277 @@ function updateSalesChart(viewType) {
                     }
                 }
             }
+        } : {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            return '₹' + context.raw.toLocaleString('en-IN', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
+                        }
+                    },
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    titleColor: '#333',
+                    bodyColor: '#666',
+                    borderColor: '#ddd',
+                    borderWidth: 1,
+                    padding: 10,
+                    boxPadding: 4
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 11
+                        },
+                        color: '#666'
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        font: {
+                            size: 11
+                        },
+                        color: '#666',
+                        callback: function(value) {
+                            return '₹' + value.toLocaleString('en-IN');
+                        }
+                    }
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            },
+            elements: {
+                line: {
+                    tension: 0.4
+                }
+            }
         }
     };
 
     salesChart = new Chart(salesCtx, chartConfig);
 }
 
-// Event listener for sales chart toggle
-document.getElementById('salesChartToggle').addEventListener('change', function() {
-    updateSalesChart(this.value);
+// Update the initialization to ensure consistent icon sizes
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Lucide icons with consistent size
+    lucide.createIcons({
+        attrs: {
+            'stroke-width': '2.5',
+            'width': '14',
+            'height': '14'
+        }
+    });
+    
+    // Rest of your existing initialization code...
 });
 
-// Initialize sales chart with product view
-updateSalesChart('product');
+// Add these functions to your existing script
+function downloadCurrentReport() {
+    const currentView = document.querySelector('.toggle-btn.active').id === 'productSalesBtn' ? 'product' : 'today';
+    let url = '/download_sales_report?view=' + currentView;
+    
+    if (currentView === 'today') {
+        const date = document.getElementById('salesDate').value;
+        url += '&date=' + date;
+    }
+    
+    window.location.href = url;
+}
+
+function downloadCustomReport() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    if (!startDate || !endDate) {
+        alert('Please select both start and end dates');
+        return;
+    }
+    
+    if (startDate > endDate) {
+        alert('Start date cannot be later than end date');
+        return;
+    }
+    
+    window.location.href = `/download_sales_report?type=range&start_date=${startDate}&end_date=${endDate}`;
+    bootstrap.Modal.getInstance(document.getElementById('reportDateModal')).hide();
+}
+
+// Add to your existing DOMContentLoaded event
+document.addEventListener('DOMContentLoaded', function() {
+    // ... existing code ...
+
+    // Set default date values for report modal
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+    document.getElementById('endDate').value = today;
+    
+    // Validate date range
+    document.getElementById('endDate').addEventListener('change', function() {
+        const startDate = document.getElementById('startDate').value;
+        if (this.value && startDate && this.value < startDate) {
+            alert('End date cannot be earlier than start date');
+            this.value = startDate;
+        }
+    });
+
+    document.getElementById('startDate').addEventListener('change', function() {
+        const endDate = document.getElementById('endDate').value;
+        if (this.value && endDate && this.value > endDate) {
+            document.getElementById('endDate').value = this.value;
+        }
+    });
+});
 </script>
+
+<style>
+/* Updated compact styling */
+.sales-toggle {
+    background-color: #f8f9fa;
+    padding: 3px;
+    border-radius: 8px;
+    display: inline-flex;
+    gap: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.toggle-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.toggle-btn:hover {
+    color: #333;
+    background-color: rgba(255,255,255,0.5);
+}
+
+.toggle-btn.active {
+    background-color: #fff;
+    color: var(--primary-color);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.toggle-btn .icon {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.5;
+}
+
+/* Date selector styling */
+#salesDate {
+    border-radius: 6px;
+    padding: 6px 10px;
+    border: 1px solid #dee2e6;
+    background-color: #fff;
+    font-size: 13px;
+    color: #333;
+    width: 130px;
+    height: 31px;
+}
+
+#salesDate:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.1);
+    outline: none;
+}
+
+.btn-outline-secondary {
+    border-radius: 6px;
+    padding: 6px 12px;
+    border: 1px solid #dee2e6;
+    background-color: #fff;
+    color: #6c757d;
+    font-size: 13px;
+    font-weight: 500;
+    height: 31px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-outline-secondary:hover {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #333;
+}
+
+.btn-outline-secondary .icon {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.5;
+}
+
+/* Ensure all icons are consistent */
+.icon {
+    width: 14px !important;
+    height: 14px !important;
+    stroke-width: 2.5;
+}
+
+/* Make form controls more compact */
+.form-control-sm {
+    font-size: 13px;
+    padding: 6px 10px;
+    height: 31px;
+}
+
+/* Adjust spacing */
+.mb-3 {
+    margin-bottom: 0.75rem !important;
+}
+
+.gap-2 {
+    gap: 0.5rem !important;
+}
+
+/* Add to your existing styles */
+.dropdown-menu {
+    padding: 0.5rem 0;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-radius: 6px;
+}
+
+.dropdown-item {
+    padding: 0.5rem 1rem;
+    font-size: 13px;
+    color: #333;
+}
+
+.dropdown-item:hover {
+    background-color: #f8f9fa;
+}
+</style>
 {% endblock %}
 
