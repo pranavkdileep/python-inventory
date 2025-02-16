@@ -463,7 +463,9 @@ function addItemRow(containerId, itemName = '', itemQuantity = '') {
                     <select class="form-select" name="items" required>
                         <option value="">Select an item</option>
                         {% for item in inventory %}
-                        <option value="{{ item.name }}"${itemName === '{{ item.name }}' ? ' selected' : ''}>{{ item.name }}</option>
+                        <option value="{{ item.name }}"${itemName === '{{ item.name }}' ? ' selected' : ''}>
+                            {{ item.name }} - ₹{{ "{:,.2f}".format(item.price) }}
+                        </option>
                         {% endfor %}
                     </select>
                 </div>

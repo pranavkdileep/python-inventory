@@ -12,6 +12,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from functools import wraps
 import atexit
+from reportlab.lib.units import inch
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Replace with a strong secret key
@@ -362,12 +363,19 @@ def dashboard():
     product_sales_data = get_product_sales_data(user_email)
     today_sales_data = get_today_sales_data(user_email)
     
+    # Sort orders by date in descending order (newest first)
+    sorted_orders = sorted(
+        user_data['orders'],
+        key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d %H:%M:%S"),
+        reverse=True
+    )
+    
     return render_template('dashboard.html', 
                          inventory_count=inventory_count,
                          total_sales=total_sales,
                          company_name=user_data['company_name'],  # Use user-specific company name
                          low_stock_products=low_stock_products,
-                         orders=user_data['orders'],
+                         orders=sorted_orders[:5],  # Get only the 5 most recent orders
                          sales_mini_data=sales_mini_data,
                          inventory_mini_data=inventory_mini_data,
                          product_sales_data=product_sales_data,
@@ -381,8 +389,16 @@ def dashboard():
 def orders_page():
     user_email = session['user_email']
     user_data = init_user_if_needed(user_email)
+    
+    # Sort orders by date in descending order (newest first)
+    sorted_orders = sorted(
+        user_data['orders'],
+        key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d %H:%M:%S"),
+        reverse=True
+    )
+    
     return render_template('orders.html', 
-                         orders=user_data['orders'], 
+                         orders=sorted_orders,
                          inventory=user_data['inventory'],
                          company_name=user_data['company_name'])
 
@@ -442,9 +458,13 @@ def add_order():
             })
             total += item_total
         
+        # Find the highest order ID and increment by 1
+        max_order_id = max((order.get('id', 0) for order in user_data['orders']), default=0)
+        new_order_id = max_order_id + 1
+        
         # Create new order
         order = {
-            'id': len(user_data['orders']) + 1,
+            'id': new_order_id,
             'customer': customer,
             'items': order_items,
             'total': total,
@@ -768,7 +788,7 @@ def generate_report():
     
     # Add company name and report title
     elements.append(Paragraph(user_data.get('company_name', 'Company Name'), title_style))
-    elements.append(Paragraph('Sales Report', subtitle_style))
+    elements.append(Paragraph('Report', subtitle_style))
     
     # Add date range
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -860,31 +880,42 @@ def generate_report():
     sorted_orders = sorted(orders, key=lambda x: datetime.strptime(x.get('date', ''), "%Y-%m-%d %H:%M:%S"), reverse=True)
     recent_orders = sorted_orders[:10]  # Get last 10 orders
     
-    order_data = [['Order Date', 'Customer', 'Total']]
-    for order in recent_orders:
-        order_date = datetime.strptime(order.get('date', ''), "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-        order_data.append([
-            order_date,
-            order.get('customer', 'Unknown'),
-            f"₹{order.get('total', 0):,.2f}"
+    # Prepare data for table
+    table_data = [['Order ID', 'Customer', 'Items', 'Total', 'Date']]
+    
+    for i, order in enumerate(recent_orders, 1):
+        # Format items vertically, one per line
+        items_str = "\n".join([f"{item['name']} (x{item['quantity']})" for item in order['items']])
+        
+        table_data.append([
+            f"#{i:04d}",
+            order['customer'],
+            items_str,
+            f"₹{order['total']:,.2f}",
+            order['date']
         ])
     
-    order_table = Table(order_data, colWidths=[133, 133, 133])
-    order_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#666666')),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+    # Create table with properly imported inch unit
+    table = Table(table_data, colWidths=[0.7*inch, 1.5*inch, 2.5*inch, 1*inch, 1.3*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 12),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
-        ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 1), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),  # Left align items column
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # Align all content to top
+        ('TOPPADDING', (0, 1), (-1, -1), 12),  # Add padding to cells
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 12),
     ]))
-    elements.append(order_table)
+    elements.append(table)
     
     # Build PDF
     doc.build(elements)
@@ -932,12 +963,30 @@ def get_order(order_index):
     try:
         user_email = session['user_email']
         user_data = users[user_email]
-        index = int(order_index)
         
-        if 0 <= index < len(user_data['orders']):
+        # Sort orders by date first
+        sorted_orders = sorted(
+            user_data['orders'],
+            key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d %H:%M:%S"),
+            reverse=True
+        )
+        
+        index = int(order_index)
+        if 0 <= index < len(sorted_orders):
+            order = sorted_orders[index].copy()  # Create a copy to modify
+            
+            try:
+                # Convert the stored date string to datetime object
+                order_datetime = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S")
+                # Format for datetime-local input
+                order['date'] = order_datetime.strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                # If there's an error parsing the date, use current time
+                order['date'] = datetime.now().strftime("%Y-%m-%dT%H:%M")
+            
             return jsonify({
                 'success': True,
-                'order': user_data['orders'][index]
+                'order': order
             })
         else:
             return jsonify({'success': False, 'error': 'Order not found'})
@@ -950,10 +999,19 @@ def edit_order(order_index):
     try:
         user_email = session['user_email']
         user_data = users[user_email]
-        index = int(order_index)
         
-        if 0 <= index < len(user_data['orders']):
-            old_order = user_data['orders'][index]
+        # Sort orders by date first
+        sorted_orders = sorted(
+            user_data['orders'],
+            key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d %H:%M:%S"),
+            reverse=True
+        )
+        
+        index = int(order_index)
+        if 0 <= index < len(sorted_orders):
+            # Find the original order in the unsorted list
+            old_order = sorted_orders[index]
+            original_index = user_data['orders'].index(old_order)
             
             # Return old items to inventory
             for item in old_order.get('items', []):
@@ -972,21 +1030,20 @@ def edit_order(order_index):
             if not customer or not items or not order_date:
                 return jsonify({'success': False, 'error': 'Missing required fields'})
             
-            # Convert date string to datetime
+            # Convert date string to datetime and format
             try:
                 order_datetime = datetime.strptime(order_date, '%Y-%m-%dT%H:%M')
                 formatted_date = order_datetime.strftime("%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return jsonify({'success': False, 'error': 'Invalid date format'})
+            except ValueError as e:
+                return jsonify({'success': False, 'error': f'Invalid date format: {str(e)}'})
             
             total = 0
-            # Update inventory and calculate total
+            new_items = []
             for item in items:
                 quantity = int(item['quantity'])
                 price = float(item['price'])
                 item_total = quantity * price
                 
-                # Find and update inventory
                 inventory_item = next(
                     (inv_item for inv_item in user_data['inventory'] if inv_item['name'] == item['name']),
                     None
@@ -1000,11 +1057,17 @@ def edit_order(order_index):
                 
                 inventory_item['quantity'] -= quantity
                 total += item_total
+                
+                new_items.append({
+                    'name': item['name'],
+                    'quantity': quantity,
+                    'price': price
+                })
             
-            # Update order
-            user_data['orders'][index] = {
+            # Update order at its original position
+            user_data['orders'][original_index] = {
                 'customer': customer,
-                'items': items,
+                'items': new_items,
                 'total': total,
                 'date': formatted_date
             }
@@ -1272,7 +1335,7 @@ def download_sales_report():
         # Order-wise details
         table_data = [['Order ID', 'Date & Time', 'Customer', 'Items', 'Total']]
         for i, order in enumerate(orders, 1):
-            items_str = ", ".join([f"{item['name']} (x{item['quantity']})" for item in order['items']])
+            items_str = "\n".join([f"{item['name']} (x{item['quantity']})" for item in order['items']])
             # Parse and format the date for better readability
             order_date = datetime.strptime(order['date'], "%Y-%m-%d %H:%M:%S")
             formatted_date = order_date.strftime("%Y-%m-%d %I:%M %p")
