@@ -78,16 +78,23 @@
                                 <div class="row g-3">
                                     <div class="col-md-8">
                                         <label class="form-label text-secondary">Item</label>
-                                        <select class="form-select" name="items" required>
+                                        <select class="form-select" name="items" required onchange="checkInventory(this)">
                                             <option value="">Select an item</option>
                                             {% for item in inventory %}
-                                            <option value="{{ item.name }}">{{ item.name }} - ₹{{ "{:,.2f}".format(item.price) }}</option>
+                                            <option value="{{ item.name }}" 
+                                                    data-price="{{ item.price }}"
+                                                    data-stock="{{ item.quantity }}">
+                                                {{ item.name }} - ₹{{ "{:,.2f}".format(item.price) }} 
+                                                ({{ item.quantity }} in stock)
+                                            </option>
                                             {% endfor %}
                                         </select>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label text-secondary">Quantity</label>
-                                        <input type="number" class="form-control" name="quantities" required min="1">
+                                        <input type="number" class="form-control" name="quantities" required min="1" 
+                                               onchange="checkInventory(this.closest('.card-body').querySelector('select[name=items]'))">
+                                        <small class="text-muted stock-message"></small>
                                     </div>
                                 </div>
                             </div>
@@ -306,6 +313,23 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('confirmAddOrder').addEventListener('click', function() {
         const formData = new FormData(addOrderForm);
         
+        // Check inventory before submitting
+        let inventoryValid = true;
+        document.querySelectorAll('.order-item').forEach(item => {
+            const select = item.querySelector('select[name="item_name[]"]');
+            const quantity = parseInt(item.querySelector('input[name="quantity[]"]').value);
+            const availableStock = parseInt(select.options[select.selectedIndex].dataset.stock);
+            
+            if (quantity > availableStock) {
+                inventoryValid = false;
+                showAlert('danger', `Not enough inventory for ${select.value}. Only ${availableStock} available.`);
+            }
+        });
+        
+        if (!inventoryValid) {
+            return;
+        }
+        
         // Add items data
         const items = [];
         document.querySelectorAll('.order-item').forEach(item => {
@@ -460,18 +484,24 @@ function addItemRow(containerId, itemName = '', itemQuantity = '') {
             <div class="row g-3">
                 <div class="col-md-8">
                     <label class="form-label text-secondary">Item</label>
-                    <select class="form-select" name="items" required>
+                    <select class="form-select" name="items" required onchange="checkInventory(this)">
                         <option value="">Select an item</option>
                         {% for item in inventory %}
-                        <option value="{{ item.name }}"${itemName === '{{ item.name }}' ? ' selected' : ''}>
-                            {{ item.name }} - ₹{{ "{:,.2f}".format(item.price) }}
+                        <option value="{{ item.name }}" 
+                                data-price="{{ item.price }}"
+                                data-stock="{{ item.quantity }}">${itemName === '{{ item.name }}' ? ' selected' : ''}>
+                            {{ item.name }} - ₹{{ "{:,.2f}".format(item.price) }} 
+                            ({{ item.quantity }} in stock)
                         </option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label text-secondary">Quantity</label>
-                    <input type="number" class="form-control" name="quantities" value="${itemQuantity}" required min="1">
+                    <input type="number" class="form-control" name="quantities" 
+                           value="${itemQuantity}" required min="1" 
+                           onchange="checkInventory(this.closest('.card-body').querySelector('select[name=items]'))">
+                    <small class="text-muted stock-message"></small>
                 </div>
             </div>
             <button type="button" class="btn btn-link text-danger p-0 mt-2 remove-item">
@@ -488,6 +518,36 @@ function addItemRow(containerId, itemName = '', itemQuantity = '') {
     newRow.querySelector('.remove-item').addEventListener('click', function() {
         newRow.remove();
     });
+}
+
+function checkInventory(select) {
+    const row = select.closest('.card-body');
+    const quantityInput = row.querySelector('input[name="quantities"]');
+    const stockMessage = row.querySelector('.stock-message');
+    const selectedOption = select.options[select.selectedIndex];
+    
+    if (selectedOption.value) {
+        const availableStock = parseInt(selectedOption.dataset.stock);
+        const requestedQuantity = parseInt(quantityInput.value) || 0;
+        
+        // Update max attribute
+        quantityInput.max = availableStock;
+        
+        if (requestedQuantity > availableStock) {
+            quantityInput.value = availableStock;
+            stockMessage.textContent = `Only ${availableStock} items available`;
+            stockMessage.classList.add('text-danger');
+            showAlert('warning', `Quantity adjusted to available stock (${availableStock} items)`);
+        } else if (availableStock <= 5) {
+            stockMessage.textContent = `Only ${availableStock} items left`;
+            stockMessage.classList.add('text-warning');
+        } else {
+            stockMessage.textContent = `${availableStock} items available`;
+            stockMessage.classList.remove('text-danger', 'text-warning');
+        }
+    } else {
+        stockMessage.textContent = '';
+    }
 }
 
 function showAlert(type, message) {
@@ -569,16 +629,22 @@ function addEditItemRow(item = null) {
     itemRow.innerHTML = `
         <div class="col-md-4">
             <label class="form-label">Item</label>
-            <select class="form-select" name="item_name[]" required onchange="updatePrice(this)">
+            <select class="form-select" name="item_name[]" required onchange="updatePriceAndCheckInventory(this)">
                 <option value="">Select Item</option>
                 {% for item in inventory %}
-                <option value="{{ item.name }}" data-price="{{ item.price }}">{{ item.name }}</option>
+                <option value="{{ item.name }}" 
+                        data-price="{{ item.price }}"
+                        data-stock="{{ item.quantity }}">
+                    {{ item.name }} ({{ item.quantity }} in stock)
+                </option>
                 {% endfor %}
             </select>
         </div>
         <div class="col-md-3">
             <label class="form-label">Quantity</label>
-            <input type="number" class="form-control" name="quantity[]" min="1" required value="1" onchange="updateTotal(this.closest('.order-item'))">
+            <input type="number" class="form-control" name="quantity[]" min="1" required value="1" 
+                   onchange="updateTotalAndCheckInventory(this.closest('.order-item'))">
+            <small class="text-muted stock-message"></small>
         </div>
         <div class="col-md-3">
             <label class="form-label">Price</label>
@@ -610,7 +676,16 @@ function addEditItemRow(item = null) {
     });
 }
 
-// Add price update function
+function updatePriceAndCheckInventory(select) {
+    updatePrice(select);
+    checkInventory(select);
+}
+
+function updateTotalAndCheckInventory(row) {
+    updateTotal(row);
+    checkInventory(row.querySelector('select[name="item_name[]"]'));
+}
+
 function updatePrice(select) {
     const row = select.closest('.order-item');
     const price = select.options[select.selectedIndex].dataset.price;
