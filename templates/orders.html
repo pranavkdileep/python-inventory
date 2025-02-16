@@ -329,7 +329,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 addOrderForm.reset();
                 location.reload();
             } else {
-                alert('Error: ' + (data.error || 'Failed to add order'));
+                alert('Error: ' + (data.message || 'Failed to add order'));
             }
         })
         .catch(error => {
